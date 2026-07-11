@@ -75,7 +75,11 @@ yay -Rns flutter-bin jdk17-openjdk android-sdk-cmdline-tools-latest android-sdk-
 
 Caches e diretórios que essas ferramentas criam por fora (apagar manualmente):
 
-- `/opt/android-sdk/` — SDK do Android (pode passar de 1 GB)
+- `/opt/android-sdk/` — SDK do Android (pode passar de 1 GB; o chown pro
+  usuário foi proposital, pro Gradle conseguir baixar componentes)
+- `~/flutter/` — Flutter 3.41.7 que o **flet build** baixa por conta própria
+  (ele exige essa versão exata; a do flutter-bin 3.44.6 é só ignorada)
+- `~/.flet/` — caches do Flet
 - `~/.gradle/` — cache do Gradle (cresce bastante com builds)
 - `~/.pub-cache/` — pacotes do Dart/Flutter
 - `~/.android/` — configs e chaves de debug do Android
