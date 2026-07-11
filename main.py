@@ -89,14 +89,40 @@ def init_db():
         )
         """
     )
+    # Associação N:N — uma tarefa pode estar em várias listas
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tarefa_listas (
+            tarefa_id INTEGER NOT NULL,
+            lista     TEXT NOT NULL,
+            UNIQUE (tarefa_id, lista)
+        )
+        """
+    )
     # Semeia as listas padrão + qualquer categoria que já exista nas tarefas
     for nome in LISTAS_INICIAIS:
         con.execute("INSERT OR IGNORE INTO listas (nome) VALUES (?)", (nome,))
     con.execute(
         "INSERT OR IGNORE INTO listas (nome) SELECT DISTINCT categoria FROM tarefas"
     )
+    # Migração: tarefas antigas entram no N:N com a lista da coluna categoria
+    con.execute(
+        "INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista) SELECT id, categoria FROM tarefas"
+    )
     con.commit()
     con.close()
+
+
+# Subconsulta usada nos SELECTs pra montar a etiqueta "Financeiro · Pessoal"
+_AGG_LISTAS = "(SELECT GROUP_CONCAT(lista, ' · ') FROM tarefa_listas WHERE tarefa_id = t.id) AS listas"
+
+
+def rotulo_listas(t):
+    """Nome(s) de lista pra etiqueta do card."""
+    try:
+        return t["listas"] or t["categoria"]
+    except IndexError:
+        return t["categoria"]
 
 
 def listar_listas():
@@ -123,10 +149,10 @@ def buscar_tarefas(termo):
     con.row_factory = sqlite3.Row
     padrao = "%" + termo.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
     linhas = con.execute(
-        r"""
-        SELECT * FROM tarefas
-        WHERE titulo LIKE ? ESCAPE '\' OR descricao_conclusao LIKE ? ESCAPE '\'
-        ORDER BY concluida ASC, prioridade DESC, (prazo IS NULL), prazo ASC, id DESC
+        rf"""
+        SELECT t.*, {_AGG_LISTAS} FROM tarefas t
+        WHERE t.titulo LIKE ? ESCAPE '\' OR t.descricao_conclusao LIKE ? ESCAPE '\'
+        ORDER BY t.concluida ASC, t.prioridade DESC, (t.prazo IS NULL), t.prazo ASC, t.id DESC
         """,
         (padrao, padrao),
     ).fetchall()
@@ -147,15 +173,30 @@ def renomear_lista(lid, novo_nome, oculta):
             "UPDATE tarefas SET categoria = ? WHERE categoria = ?",
             (novo_nome, antigo[0]),
         )
+        con.execute(
+            "UPDATE OR IGNORE tarefa_listas SET lista = ? WHERE lista = ?",
+            (novo_nome, antigo[0]),
+        )
+        # se alguma tarefa já estava nas duas listas, remove a duplicada antiga
+        con.execute("DELETE FROM tarefa_listas WHERE lista = ?", (antigo[0],))
         con.commit()
     con.close()
 
 
 def excluir_lista(lid):
-    """Apaga a lista; as tarefas dela vão pra 'Padrão' (nada se perde)."""
+    """Apaga a lista; tarefa que ficaria sem lista vai pra 'Padrão'."""
     con = sqlite3.connect(DB)
     nome = con.execute("SELECT nome FROM listas WHERE id = ?", (lid,)).fetchone()
     if nome and nome[0] != "Padrão":
+        con.execute("DELETE FROM tarefa_listas WHERE lista = ?", (nome[0],))
+        # órfãs (não estão em mais nenhuma lista) → Padrão
+        con.execute(
+            """
+            INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista)
+            SELECT id, 'Padrão' FROM tarefas
+            WHERE id NOT IN (SELECT tarefa_id FROM tarefa_listas)
+            """
+        )
         con.execute("UPDATE tarefas SET categoria = 'Padrão' WHERE categoria = ?", (nome[0],))
         con.execute("DELETE FROM listas WHERE id = ?", (lid,))
         con.commit()
@@ -166,7 +207,7 @@ def contar_por_lista_total():
     """Total de tarefas (pendentes + concluídas) por lista, pra tela de gerenciamento."""
     con = sqlite3.connect(DB)
     linhas = dict(
-        con.execute("SELECT categoria, COUNT(*) FROM tarefas GROUP BY categoria").fetchall()
+        con.execute("SELECT lista, COUNT(*) FROM tarefa_listas GROUP BY lista").fetchall()
     )
     con.close()
     return linhas
@@ -176,36 +217,60 @@ def listar_pendentes(lista=None):
     """Pendentes de uma lista, ou de todas (excluindo listas ocultas)."""
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
-    base = """
-        SELECT t.* FROM tarefas t
+    base = f"""
+        SELECT t.*, {_AGG_LISTAS} FROM tarefas t
         WHERE t.concluida = 0
           AND (t.aparece_em IS NULL OR t.aparece_em <= datetime('now','localtime'))
-          {filtro}
+          {{filtro}}
         ORDER BY t.prioridade DESC, (t.prazo IS NULL), t.prazo ASC, t.id DESC
     """
     if lista is None:
-        # "Todas": esconde tarefas de listas marcadas como ocultas
+        # "Todas": aparece se estiver em pelo menos uma lista não oculta
         q = base.format(
-            filtro="AND t.categoria NOT IN (SELECT nome FROM listas WHERE oculta = 1)"
+            filtro="""AND EXISTS (
+                SELECT 1 FROM tarefa_listas tl JOIN listas l ON l.nome = tl.lista
+                WHERE tl.tarefa_id = t.id AND l.oculta = 0
+            )"""
         )
         linhas = con.execute(q).fetchall()
     else:
-        q = base.format(filtro="AND t.categoria = ?")
+        q = base.format(
+            filtro="AND EXISTS (SELECT 1 FROM tarefa_listas WHERE tarefa_id = t.id AND lista = ?)"
+        )
         linhas = con.execute(q, (lista,)).fetchall()
     con.close()
     return linhas
+
+
+def listas_da_tarefa(tid):
+    con = sqlite3.connect(DB)
+    nomes = [r[0] for r in con.execute(
+        "SELECT lista FROM tarefa_listas WHERE tarefa_id = ? ORDER BY lista", (tid,)
+    )]
+    con.close()
+    return nomes
+
+
+def _definir_listas(con, tid, listas):
+    con.execute("DELETE FROM tarefa_listas WHERE tarefa_id = ?", (tid,))
+    for nome in listas:
+        con.execute(
+            "INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista) VALUES (?, ?)", (tid, nome)
+        )
+    # coluna legada continua apontando pra primeira lista
+    con.execute("UPDATE tarefas SET categoria = ? WHERE id = ?", (listas[0], tid))
 
 
 def listar_concluidas(lista=None):
     """Concluídas, mais recentes primeiro. Sempre mostra todas as listas."""
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
-    q = "SELECT * FROM tarefas WHERE concluida = 1"
+    q = f"SELECT t.*, {_AGG_LISTAS} FROM tarefas t WHERE t.concluida = 1"
     params = ()
     if lista is not None:
-        q += " AND categoria = ?"
+        q += " AND EXISTS (SELECT 1 FROM tarefa_listas WHERE tarefa_id = t.id AND lista = ?)"
         params = (lista,)
-    q += " ORDER BY concluida_em DESC, id DESC"
+    q += " ORDER BY t.concluida_em DESC, t.id DESC"
     linhas = con.execute(q, params).fetchall()
     con.close()
     return linhas
@@ -227,19 +292,23 @@ def contagens():
     por_lista = dict(
         con.execute(
             """
-            SELECT categoria, COUNT(*) FROM tarefas
-            WHERE concluida = 0
-              AND (aparece_em IS NULL OR aparece_em <= datetime('now','localtime'))
-            GROUP BY categoria
+            SELECT tl.lista, COUNT(*) FROM tarefa_listas tl
+            JOIN tarefas t ON t.id = tl.tarefa_id
+            WHERE t.concluida = 0
+              AND (t.aparece_em IS NULL OR t.aparece_em <= datetime('now','localtime'))
+            GROUP BY tl.lista
             """
         ).fetchall()
     )
     todas = con.execute(
         """
-        SELECT COUNT(*) FROM tarefas
-        WHERE concluida = 0
-          AND (aparece_em IS NULL OR aparece_em <= datetime('now','localtime'))
-          AND categoria NOT IN (SELECT nome FROM listas WHERE oculta = 1)
+        SELECT COUNT(*) FROM tarefas t
+        WHERE t.concluida = 0
+          AND (t.aparece_em IS NULL OR t.aparece_em <= datetime('now','localtime'))
+          AND EXISTS (
+              SELECT 1 FROM tarefa_listas tl JOIN listas l ON l.nome = tl.lista
+              WHERE tl.tarefa_id = t.id AND l.oculta = 0
+          )
         """
     ).fetchone()[0]
     concluidas = con.execute(
@@ -249,22 +318,31 @@ def contagens():
     return {"por_lista": por_lista, "todas": todas, "concluidas": concluidas}
 
 
-def adicionar_tarefa(titulo, categoria, prioridade=1, prazo=None, repetir=None):
+def adicionar_tarefa(titulo, listas, prioridade=1, prazo=None, repetir=None):
+    """`listas` pode ser um nome só ou uma lista de nomes (N:N)."""
+    if isinstance(listas, str):
+        listas = [listas]
+    listas = listas or ["Padrão"]
     con = sqlite3.connect(DB)
-    con.execute(
+    cur = con.execute(
         "INSERT INTO tarefas (titulo, categoria, prioridade, prazo, repetir) VALUES (?, ?, ?, ?, ?)",
-        (titulo, categoria, prioridade, prazo, repetir),
+        (titulo, listas[0], prioridade, prazo, repetir),
     )
+    _definir_listas(con, cur.lastrowid, listas)
     con.commit()
     con.close()
 
 
-def atualizar_tarefa(tid, titulo, categoria, prioridade, prazo, repetir=None):
+def atualizar_tarefa(tid, titulo, listas, prioridade, prazo, repetir=None):
+    if isinstance(listas, str):
+        listas = [listas]
+    listas = listas or ["Padrão"]
     con = sqlite3.connect(DB)
     con.execute(
-        "UPDATE tarefas SET titulo = ?, categoria = ?, prioridade = ?, prazo = ?, repetir = ? WHERE id = ?",
-        (titulo, categoria, prioridade, prazo, repetir, tid),
+        "UPDATE tarefas SET titulo = ?, prioridade = ?, prazo = ?, repetir = ? WHERE id = ?",
+        (titulo, prioridade, prazo, repetir, tid),
     )
+    _definir_listas(con, tid, listas)
     con.commit()
     con.close()
 
@@ -272,6 +350,7 @@ def atualizar_tarefa(tid, titulo, categoria, prioridade, prazo, repetir=None):
 def excluir_tarefa(tid):
     con = sqlite3.connect(DB)
     con.execute("DELETE FROM subtarefas WHERE tarefa_id = ?", (tid,))
+    con.execute("DELETE FROM tarefa_listas WHERE tarefa_id = ?", (tid,))
     con.execute("DELETE FROM tarefas WHERE id = ?", (tid,))
     con.commit()
     con.close()
@@ -395,6 +474,14 @@ def marcar_concluida(tid, valor):
                     (t["titulo"], t["categoria"], t["prioridade"], prox, t["repetir"], aparece),
                 )
                 novo_id = cur.lastrowid
+                # A ocorrência nova herda as mesmas listas (N:N)
+                con.execute(
+                    """
+                    INSERT INTO tarefa_listas (tarefa_id, lista)
+                    SELECT ?, lista FROM tarefa_listas WHERE tarefa_id = ?
+                    """,
+                    (novo_id, tid),
+                )
                 # Renova o checklist: subtarefas iguais, todas desmarcadas
                 con.execute(
                     """
@@ -523,9 +610,9 @@ def main(page: ft.Page):
                 marcar_concluida(tid, False)
             render_tarefas()
 
-        # Etiqueta da lista no canto, como no app de referência
+        # Etiqueta da(s) lista(s) no canto, como no app de referência
         etiqueta = ft.Container(
-            ft.Text(t["categoria"], size=11, color=COR_TEXTO_SUAVE),
+            ft.Text(rotulo_listas(t), size=11, color=COR_TEXTO_SUAVE),
             alignment=ft.Alignment(1, -1),
         )
 
@@ -701,7 +788,6 @@ def main(page: ft.Page):
         renomear_lista(dialogo_editar_lista.data, nome, switch_edit_oculta.value)
         if filtro["lista"] is not None:
             filtro["lista"] = None  # o nome pode ter mudado; volta pro Todas
-        atualizar_opcoes_listas()
         page.pop_dialog()
         render_tarefas()
 
@@ -718,14 +804,13 @@ def main(page: ft.Page):
     def confirmar_exclusao_lista(lid, nome):
         dialogo_excluir_lista.data = lid
         dialogo_excluir_lista.content = ft.Text(
-            f'As tarefas de "{nome}" vão pra lista Padrão. Nada se perde.'
+            f'Tarefa de "{nome}" que não estiver em outra lista vai pra Padrão. Nada se perde.'
         )
         page.show_dialog(dialogo_excluir_lista)
 
     def excluir_lista_confirmada(e):
         excluir_lista(dialogo_excluir_lista.data)
         filtro["lista"] = None
-        atualizar_opcoes_listas()
         page.pop_dialog()
         render_tarefas()
 
@@ -785,7 +870,7 @@ def main(page: ft.Page):
             content=ft.Column(
                 [
                     ft.Container(
-                        ft.Text(t["categoria"], size=11, color=COR_TEXTO_SUAVE),
+                        ft.Text(rotulo_listas(t), size=11, color=COR_TEXTO_SUAVE),
                         alignment=ft.Alignment(1, -1),
                     ),
                     ft.Row(
@@ -953,7 +1038,6 @@ def main(page: ft.Page):
         if not nome:
             return
         criar_lista(nome, switch_oculta.value)
-        atualizar_opcoes_listas()
         page.pop_dialog()
         render_tarefas()
 
@@ -976,7 +1060,7 @@ def main(page: ft.Page):
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
         border_color=COR_AZUL,
     )
-    dropdown_edit_lista = ft.Dropdown(label="Lista de tarefas", options=[], border_color=COR_AZUL)
+    selecao_listas_edit = ft.Column(spacing=0)
     dropdown_edit_prioridade = ft.Dropdown(
         label="Prioridade",
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
@@ -990,6 +1074,15 @@ def main(page: ft.Page):
     NOMES_REPETICAO = {v: k for k, v in REPETICOES.items()}
 
     texto_detalhes = ft.Text("", size=12, color=COR_TEXTO_SUAVE)
+
+    def montar_selecao_listas(coluna, marcadas):
+        coluna.controls = [
+            ft.Checkbox(label=l["nome"], value=(l["nome"] in marcadas))
+            for l in listar_listas()
+        ]
+
+    def listas_marcadas(coluna):
+        return [c.label for c in coluna.controls if c.value]
 
     # Subtarefas dentro da folha de edição
     titulo_subtarefas = ft.Text("Subtarefas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE)
@@ -1059,8 +1152,7 @@ def main(page: ft.Page):
             return
         campo_edit_titulo.value = t["titulo"]
         campo_edit_prazo.value = formatar_prazo(t["prazo"]) if t["prazo"] else ""
-        dropdown_edit_lista.options = [ft.dropdown.Option(l["nome"]) for l in listar_listas()]
-        dropdown_edit_lista.value = t["categoria"]
+        montar_selecao_listas(selecao_listas_edit, set(listas_da_tarefa(tid)))
         dropdown_edit_prioridade.value = NOMES_PRIORIDADE.get(t["prioridade"], "Média")
         dropdown_edit_repetir.value = NOMES_REPETICAO.get(t["repetir"], "Não repete")
         campo_nova_subtarefa.value = ""
@@ -1079,7 +1171,7 @@ def main(page: ft.Page):
         atualizar_tarefa(
             folha_editar.data,
             titulo,
-            dropdown_edit_lista.value,
+            listas_marcadas(selecao_listas_edit),
             PRIORIDADES[dropdown_edit_prioridade.value],
             parse_prazo(campo_edit_prazo.value or ""),
             REPETICOES[dropdown_edit_repetir.value],
@@ -1099,7 +1191,8 @@ def main(page: ft.Page):
                     texto_detalhes,
                     campo_edit_titulo,
                     campo_edit_prazo,
-                    dropdown_edit_lista,
+                    ft.Text("Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE),
+                    selecao_listas_edit,
                     dropdown_edit_prioridade,
                     dropdown_edit_repetir,
                     titulo_subtarefas,
@@ -1164,12 +1257,7 @@ def main(page: ft.Page):
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
         border_color=COR_AZUL,
     )
-    dropdown_lista = ft.Dropdown(
-        label="Lista de tarefas",
-        value="Padrão",
-        options=[],
-        border_color=COR_AZUL,
-    )
+    selecao_listas_add = ft.Column(spacing=0)
     dropdown_prioridade = ft.Dropdown(
         label="Prioridade",
         value="Média",
@@ -1183,9 +1271,6 @@ def main(page: ft.Page):
         border_color=COR_AZUL,
     )
 
-    def atualizar_opcoes_listas():
-        dropdown_lista.options = [ft.dropdown.Option(l["nome"]) for l in listar_listas()]
-
     def salvar(e):
         texto = (campo_titulo.value or "").strip()
         if not texto:
@@ -1195,8 +1280,9 @@ def main(page: ft.Page):
         # Em lote: uma tarefa por linha; senão, uma só
         titulos = [l.strip() for l in texto.split("\n") if l.strip()] if switch_lote.value else [texto]
         repetir = REPETICOES[dropdown_repetir.value]
+        listas = listas_marcadas(selecao_listas_add) or ["Padrão"]
         for titulo in titulos:
-            adicionar_tarefa(titulo, dropdown_lista.value, prioridade, prazo, repetir)
+            adicionar_tarefa(titulo, listas, prioridade, prazo, repetir)
         campo_titulo.value = ""
         campo_prazo.value = ""
         page.pop_dialog()
@@ -1210,7 +1296,8 @@ def main(page: ft.Page):
                     campo_titulo,
                     switch_lote,
                     campo_prazo,
-                    dropdown_lista,
+                    ft.Text("Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE),
+                    selecao_listas_add,
                     dropdown_prioridade,
                     dropdown_repetir,
                     ft.FilledButton("Salvar", icon=ft.Icons.CHECK, on_click=salvar),
@@ -1231,10 +1318,8 @@ def main(page: ft.Page):
             switch_oculta.value = False
             page.show_dialog(dialogo_nova_lista)
             return
-        atualizar_opcoes_listas()
         # Pré-seleciona a lista do filtro atual, como no app de referência
-        if filtro["lista"]:
-            dropdown_lista.value = filtro["lista"]
+        montar_selecao_listas(selecao_listas_add, {filtro["lista"] or "Padrão"})
         page.show_dialog(folha_adicionar)
 
     # --- Estrutura da página ----------------------------------------------
@@ -1257,7 +1342,6 @@ def main(page: ft.Page):
     )
     page.add(ft.Container(lista_tarefas, padding=12, expand=True))
 
-    atualizar_opcoes_listas()
     render_tarefas()
 
 
