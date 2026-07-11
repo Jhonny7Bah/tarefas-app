@@ -178,6 +178,31 @@ def adicionar_tarefa(titulo, categoria, prioridade=1, prazo=None):
     con.close()
 
 
+def atualizar_tarefa(tid, titulo, categoria, prioridade, prazo):
+    con = sqlite3.connect(DB)
+    con.execute(
+        "UPDATE tarefas SET titulo = ?, categoria = ?, prioridade = ?, prazo = ? WHERE id = ?",
+        (titulo, categoria, prioridade, prazo, tid),
+    )
+    con.commit()
+    con.close()
+
+
+def excluir_tarefa(tid):
+    con = sqlite3.connect(DB)
+    con.execute("DELETE FROM tarefas WHERE id = ?", (tid,))
+    con.commit()
+    con.close()
+
+
+def buscar_tarefa(tid):
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    t = con.execute("SELECT * FROM tarefas WHERE id = ?", (tid,)).fetchone()
+    con.close()
+    return t
+
+
 def marcar_concluida(tid, valor):
     con = sqlite3.connect(DB)
     if valor:
@@ -313,6 +338,9 @@ def main(page: ft.Page):
         if linha_prazo:
             corpo.append(linha_prazo)
 
+        def on_tap(e, tid=t["id"]):
+            abrir_editar(tid)
+
         return ft.Container(
             content=ft.Column(
                 [
@@ -332,6 +360,8 @@ def main(page: ft.Page):
             border_radius=10,
             padding=ft.Padding(left=12, top=4, right=12, bottom=10),
             border=ft.Border(left=ft.BorderSide(width=4, color=cor_prio)),
+            on_click=on_tap,
+            ink=True,
         )
 
     # --- Tela de Concluídas ------------------------------------------------
@@ -392,6 +422,12 @@ def main(page: ft.Page):
                                 icon_color=COR_TEXTO_SUAVE,
                                 tooltip="Como foi concluída?",
                                 on_click=editar_descricao,
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.DELETE_OUTLINE,
+                                icon_color=COR_ATRASADA,
+                                tooltip="Excluir",
+                                on_click=lambda e, tid=t["id"]: confirmar_exclusao(tid),
                             ),
                         ],
                         spacing=8,
@@ -538,6 +574,99 @@ def main(page: ft.Page):
         actions=[
             ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
             ft.FilledButton("Salvar", on_click=salvar_lista),
+        ],
+        bgcolor=COR_FUNDO,
+    )
+
+    # --- Edição e exclusão de tarefa ---------------------------------------
+    NOMES_PRIORIDADE = {v: k for k, v in PRIORIDADES.items()}
+
+    campo_edit_titulo = ft.TextField(label="O que há para fazer?", border_color=COR_AZUL)
+    campo_edit_prazo = ft.TextField(
+        label="Notificação / prazo (opcional)",
+        hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
+        border_color=COR_AZUL,
+    )
+    dropdown_edit_lista = ft.Dropdown(label="Lista de tarefas", options=[], border_color=COR_AZUL)
+    dropdown_edit_prioridade = ft.Dropdown(
+        label="Prioridade",
+        options=[ft.dropdown.Option(p) for p in PRIORIDADES],
+        border_color=COR_AZUL,
+    )
+
+    def abrir_editar(tid):
+        t = buscar_tarefa(tid)
+        if t is None:
+            return
+        campo_edit_titulo.value = t["titulo"]
+        campo_edit_prazo.value = formatar_prazo(t["prazo"]) if t["prazo"] else ""
+        dropdown_edit_lista.options = [ft.dropdown.Option(l["nome"]) for l in listar_listas()]
+        dropdown_edit_lista.value = t["categoria"]
+        dropdown_edit_prioridade.value = NOMES_PRIORIDADE.get(t["prioridade"], "Média")
+        folha_editar.data = tid
+        page.show_dialog(folha_editar)
+
+    def salvar_edicao(e):
+        titulo = (campo_edit_titulo.value or "").strip()
+        if not titulo:
+            return
+        atualizar_tarefa(
+            folha_editar.data,
+            titulo,
+            dropdown_edit_lista.value,
+            PRIORIDADES[dropdown_edit_prioridade.value],
+            parse_prazo(campo_edit_prazo.value or ""),
+        )
+        page.pop_dialog()
+        render_tarefas()
+
+    def excluir_da_edicao(e):
+        page.pop_dialog()
+        confirmar_exclusao(folha_editar.data)
+
+    folha_editar = ft.BottomSheet(
+        ft.Container(
+            ft.Column(
+                [
+                    ft.Text("Editar tarefa", size=18, weight=ft.FontWeight.BOLD),
+                    campo_edit_titulo,
+                    campo_edit_prazo,
+                    dropdown_edit_lista,
+                    dropdown_edit_prioridade,
+                    ft.Row(
+                        [
+                            ft.OutlinedButton(
+                                "Excluir", icon=ft.Icons.DELETE_OUTLINE, on_click=excluir_da_edicao
+                            ),
+                            ft.FilledButton("Salvar", icon=ft.Icons.CHECK, on_click=salvar_edicao),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    ),
+                ],
+                tight=True,
+                spacing=14,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+            padding=20,
+            bgcolor=COR_FUNDO,
+        ),
+    )
+
+    def confirmar_exclusao(tid):
+        dialogo_excluir.data = tid
+        page.show_dialog(dialogo_excluir)
+
+    def excluir_confirmado(e):
+        excluir_tarefa(dialogo_excluir.data)
+        page.pop_dialog()
+        render_tarefas()
+
+    dialogo_excluir = ft.AlertDialog(
+        title=ft.Text("Excluir tarefa?"),
+        content=ft.Text("Essa ação não pode ser desfeita."),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
+            ft.FilledButton("Excluir", on_click=excluir_confirmado),
         ],
         bgcolor=COR_FUNDO,
     )
