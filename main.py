@@ -99,6 +99,44 @@ def criar_lista(nome, oculta=False):
     con.close()
 
 
+def renomear_lista(lid, novo_nome, oculta):
+    """Renomeia/alterna oculta e propaga o novo nome pras tarefas."""
+    con = sqlite3.connect(DB)
+    antigo = con.execute("SELECT nome FROM listas WHERE id = ?", (lid,)).fetchone()
+    if antigo:
+        con.execute(
+            "UPDATE listas SET nome = ?, oculta = ? WHERE id = ?",
+            (novo_nome, 1 if oculta else 0, lid),
+        )
+        con.execute(
+            "UPDATE tarefas SET categoria = ? WHERE categoria = ?",
+            (novo_nome, antigo[0]),
+        )
+        con.commit()
+    con.close()
+
+
+def excluir_lista(lid):
+    """Apaga a lista; as tarefas dela vão pra 'Padrão' (nada se perde)."""
+    con = sqlite3.connect(DB)
+    nome = con.execute("SELECT nome FROM listas WHERE id = ?", (lid,)).fetchone()
+    if nome and nome[0] != "Padrão":
+        con.execute("UPDATE tarefas SET categoria = 'Padrão' WHERE categoria = ?", (nome[0],))
+        con.execute("DELETE FROM listas WHERE id = ?", (lid,))
+        con.commit()
+    con.close()
+
+
+def contar_por_lista_total():
+    """Total de tarefas (pendentes + concluídas) por lista, pra tela de gerenciamento."""
+    con = sqlite3.connect(DB)
+    linhas = dict(
+        con.execute("SELECT categoria, COUNT(*) FROM tarefas GROUP BY categoria").fetchall()
+    )
+    con.close()
+    return linhas
+
+
 def listar_pendentes(lista=None):
     """Pendentes de uma lista, ou de todas (excluindo listas ocultas)."""
     con = sqlite3.connect(DB)
@@ -278,6 +316,9 @@ def main(page: ft.Page):
         if filtro["modo"] == "concluidas":
             render_concluidas()
             return
+        if filtro["modo"] == "listas":
+            render_listas()
+            return
         page.floating_action_button.visible = True
         subtitulo_appbar.value = filtro["lista"] or "Todas"
         lista_tarefas.controls.clear()
@@ -363,6 +404,112 @@ def main(page: ft.Page):
             on_click=on_tap,
             ink=True,
         )
+
+    # --- Tela de gerenciamento de listas ------------------------------------
+    def render_listas():
+        page.floating_action_button.visible = True
+        subtitulo_appbar.value = "Listas de tarefas"
+        lista_tarefas.controls.clear()
+        totais = contar_por_lista_total()
+        for l in listar_listas():
+            n = totais.get(l["nome"], 0)
+            legenda = f"Tarefas: {n}" if n else "Sem tarefas"
+            if l["oculta"]:
+                legenda += '  ·  oculta do "Todas"'
+
+            acoes = []
+            if l["nome"] != "Padrão":
+                acoes = [
+                    ft.IconButton(
+                        icon=ft.Icons.EDIT_OUTLINED,
+                        icon_color=COR_TEXTO_SUAVE,
+                        tooltip="Editar",
+                        on_click=lambda e, lid=l["id"], nome=l["nome"], oc=l["oculta"]: abrir_editar_lista(lid, nome, oc),
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.DELETE_OUTLINE,
+                        icon_color=COR_ATRASADA,
+                        tooltip="Excluir",
+                        on_click=lambda e, lid=l["id"], nome=l["nome"]: confirmar_exclusao_lista(lid, nome),
+                    ),
+                ]
+
+            lista_tarefas.controls.append(
+                ft.Container(
+                    ft.Row(
+                        [
+                            ft.Column(
+                                [
+                                    ft.Text(l["nome"], color="white", size=16),
+                                    ft.Text(legenda, color=COR_TEXTO_SUAVE, size=12),
+                                ],
+                                spacing=2,
+                                expand=True,
+                            ),
+                            *acoes,
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    bgcolor=COR_CARD,
+                    border_radius=10,
+                    padding=ft.Padding(left=16, top=10, right=8, bottom=10),
+                )
+            )
+        page.update()
+
+    campo_edit_nome_lista = ft.TextField(label="Nome da lista", autofocus=True)
+    switch_edit_oculta = ft.Switch(label='Ocultar do "Todas"', value=False)
+
+    def abrir_editar_lista(lid, nome, oculta):
+        campo_edit_nome_lista.value = nome
+        switch_edit_oculta.value = bool(oculta)
+        dialogo_editar_lista.data = lid
+        page.show_dialog(dialogo_editar_lista)
+
+    def salvar_edicao_lista(e):
+        nome = (campo_edit_nome_lista.value or "").strip()
+        if not nome:
+            return
+        renomear_lista(dialogo_editar_lista.data, nome, switch_edit_oculta.value)
+        if filtro["lista"] is not None:
+            filtro["lista"] = None  # o nome pode ter mudado; volta pro Todas
+        atualizar_opcoes_listas()
+        page.pop_dialog()
+        render_tarefas()
+
+    dialogo_editar_lista = ft.AlertDialog(
+        title=ft.Text("Editar lista"),
+        content=ft.Column([campo_edit_nome_lista, switch_edit_oculta], tight=True, spacing=14),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
+            ft.FilledButton("Salvar", on_click=salvar_edicao_lista),
+        ],
+        bgcolor=COR_FUNDO,
+    )
+
+    def confirmar_exclusao_lista(lid, nome):
+        dialogo_excluir_lista.data = lid
+        dialogo_excluir_lista.content = ft.Text(
+            f'As tarefas de "{nome}" vão pra lista Padrão. Nada se perde.'
+        )
+        page.show_dialog(dialogo_excluir_lista)
+
+    def excluir_lista_confirmada(e):
+        excluir_lista(dialogo_excluir_lista.data)
+        filtro["lista"] = None
+        atualizar_opcoes_listas()
+        page.pop_dialog()
+        render_tarefas()
+
+    dialogo_excluir_lista = ft.AlertDialog(
+        title=ft.Text("Excluir lista?"),
+        content=ft.Text(""),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
+            ft.FilledButton("Excluir", on_click=excluir_lista_confirmada),
+        ],
+        bgcolor=COR_FUNDO,
+    )
 
     # --- Tela de Concluídas ------------------------------------------------
     def render_concluidas():
@@ -503,6 +650,11 @@ def main(page: ft.Page):
             await page.close_drawer()
             render_tarefas()
 
+        async def ir_listas(e):
+            filtro["modo"] = "listas"
+            await page.close_drawer()
+            render_tarefas()
+
         itens = [
             ft.Container(
                 ft.Text("LISTAS DE TAREFAS", size=12, color=COR_TEXTO_SUAVE),
@@ -541,6 +693,11 @@ def main(page: ft.Page):
                 leading=ft.Icon(ft.Icons.ADD),
                 title=ft.Text("Nova lista"),
                 on_click=abrir_nova_lista,
+            ),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.EDIT_OUTLINED),
+                title=ft.Text("Gerenciar listas"),
+                on_click=ir_listas,
             ),
         ]
         return ft.NavigationDrawer(controls=itens, bgcolor=COR_FUNDO)
@@ -745,6 +902,12 @@ def main(page: ft.Page):
     )
 
     def abrir_adicionar(e):
+        # Na tela de gerenciamento, o "+" cria uma lista; nas demais, uma tarefa
+        if filtro["modo"] == "listas":
+            campo_nome_lista.value = ""
+            switch_oculta.value = False
+            page.show_dialog(dialogo_nova_lista)
+            return
         atualizar_opcoes_listas()
         # Pré-seleciona a lista do filtro atual, como no app de referência
         if filtro["lista"]:
