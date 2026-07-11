@@ -78,3 +78,6 @@ a migração e asserta a lógica. Nunca testar contra o `tarefas.db` do projeto.
 - [x] "Repetir" inteligente (próxima ocorrência aparece 1 dia antes do prazo)
 - [x] Timestamps de criação/conclusão visíveis na folha de edição
 - [ ] Notificações Android + build do APK (fazer juntos; exige Flutter SDK)
+- [ ] Botão "verificar atualização" no app — SÓ DEPOIS do APK no Android
+      (o app é offline; checar versão exige um endpoint simples, ex. arquivo
+      de versão num GitHub raw/release, comparar e apontar pro APK novo)
