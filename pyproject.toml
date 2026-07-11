@@ -12,3 +12,18 @@ dependencies = [
 org = "dev.jhon7bah"
 product = "Tarefas"
 company = "jhon7bah"
+
+[tool.flet.app]
+# Só main.py e assets/ interessam no pacote; sem isso o flet leva a
+# .venv, o .git e até o banco local pra dentro do APK (1,8 GB!)
+exclude = [
+    ".venv",
+    ".git",
+    ".gitignore",
+    ".mypy_cache",
+    "__pycache__",
+    "tarefas.db",
+    "build.tar",
+    "CLAUDE.md",
+    "requirements.txt",
+]
