@@ -71,6 +71,18 @@ def init_db():
         con.execute("ALTER TABLE tarefas ADD COLUMN concluida_em TEXT")
     if "descricao_conclusao" not in existentes:
         con.execute("ALTER TABLE tarefas ADD COLUMN descricao_conclusao TEXT")
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS subtarefas (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            tarefa_id    INTEGER NOT NULL,
+            titulo       TEXT NOT NULL,
+            concluida    INTEGER NOT NULL DEFAULT 0,
+            criada_em    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            concluida_em TEXT
+        )
+        """
+    )
     # Semeia as listas padrão + qualquer categoria que já exista nas tarefas
     for nome in LISTAS_INICIAIS:
         con.execute("INSERT OR IGNORE INTO listas (nome) VALUES (?)", (nome,))
@@ -245,9 +257,73 @@ def atualizar_tarefa(tid, titulo, categoria, prioridade, prazo):
 
 def excluir_tarefa(tid):
     con = sqlite3.connect(DB)
+    con.execute("DELETE FROM subtarefas WHERE tarefa_id = ?", (tid,))
     con.execute("DELETE FROM tarefas WHERE id = ?", (tid,))
     con.commit()
     con.close()
+
+
+MAX_SUBTAREFAS = 10
+
+
+def listar_subtarefas(tarefa_id):
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    linhas = con.execute(
+        "SELECT * FROM subtarefas WHERE tarefa_id = ? ORDER BY id", (tarefa_id,)
+    ).fetchall()
+    con.close()
+    return linhas
+
+
+def adicionar_subtarefa(tarefa_id, titulo):
+    """Respeita o limite do documento: até 10 subtarefas por tarefa."""
+    con = sqlite3.connect(DB)
+    total = con.execute(
+        "SELECT COUNT(*) FROM subtarefas WHERE tarefa_id = ?", (tarefa_id,)
+    ).fetchone()[0]
+    if total >= MAX_SUBTAREFAS:
+        con.close()
+        return False
+    con.execute(
+        "INSERT INTO subtarefas (tarefa_id, titulo) VALUES (?, ?)", (tarefa_id, titulo)
+    )
+    con.commit()
+    con.close()
+    return True
+
+
+def marcar_subtarefa(sid, valor):
+    con = sqlite3.connect(DB)
+    if valor:
+        con.execute(
+            "UPDATE subtarefas SET concluida = 1, concluida_em = datetime('now','localtime') WHERE id = ?",
+            (sid,),
+        )
+    else:
+        con.execute(
+            "UPDATE subtarefas SET concluida = 0, concluida_em = NULL WHERE id = ?", (sid,)
+        )
+    con.commit()
+    con.close()
+
+
+def excluir_subtarefa(sid):
+    con = sqlite3.connect(DB)
+    con.execute("DELETE FROM subtarefas WHERE id = ?", (sid,))
+    con.commit()
+    con.close()
+
+
+def progresso_subtarefas(tarefa_id):
+    """(feitas, total) pra mostrar no card."""
+    con = sqlite3.connect(DB)
+    total, feitas = con.execute(
+        "SELECT COUNT(*), COALESCE(SUM(concluida), 0) FROM subtarefas WHERE tarefa_id = ?",
+        (tarefa_id,),
+    ).fetchone()
+    con.close()
+    return feitas, total
 
 
 def buscar_tarefa(tid):
@@ -398,6 +474,11 @@ def main(page: ft.Page):
         corpo = [ft.Text(t["titulo"], color="white", size=15)]
         if linha_prazo:
             corpo.append(linha_prazo)
+        feitas, total_subs = progresso_subtarefas(t["id"])
+        if total_subs:
+            corpo.append(
+                ft.Text(f"Subtarefas: {feitas}/{total_subs}", size=12, color=COR_TEXTO_SUAVE)
+            )
 
         def on_tap(e, tid=t["id"]):
             abrir_editar(tid)
@@ -829,6 +910,68 @@ def main(page: ft.Page):
         border_color=COR_AZUL,
     )
 
+    # Subtarefas dentro da folha de edição
+    titulo_subtarefas = ft.Text("Subtarefas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE)
+    subtarefas_coluna = ft.Column(spacing=0)
+    campo_nova_subtarefa = ft.TextField(label="Nova subtarefa", border_color=COR_AZUL, expand=True)
+
+    def montar_subtarefas():
+        tid = folha_editar.data
+        subs = listar_subtarefas(tid)
+        titulo_subtarefas.value = f"Subtarefas ({len(subs)}/{MAX_SUBTAREFAS})"
+        linha_add_subtarefa.visible = len(subs) < MAX_SUBTAREFAS
+
+        def linha(s):
+            def on_check(e, sid=s["id"]):
+                marcar_subtarefa(sid, e.control.value)
+                montar_subtarefas()
+                page.update()
+
+            def on_del(e, sid=s["id"]):
+                excluir_subtarefa(sid)
+                montar_subtarefas()
+                page.update()
+
+            estilo = (
+                ft.TextStyle(decoration=ft.TextDecoration.LINE_THROUGH, color=COR_TEXTO_SUAVE)
+                if s["concluida"]
+                else None
+            )
+            return ft.Row(
+                [
+                    ft.Checkbox(value=bool(s["concluida"]), on_change=on_check),
+                    ft.Text(s["titulo"], size=14, expand=True, style=estilo),
+                    ft.IconButton(
+                        icon=ft.Icons.CLOSE, icon_size=16, icon_color=COR_TEXTO_SUAVE, on_click=on_del
+                    ),
+                ],
+                spacing=4,
+            )
+
+        subtarefas_coluna.controls = [linha(s) for s in subs]
+
+    def add_subtarefa(e):
+        titulo = (campo_nova_subtarefa.value or "").strip()
+        if not titulo:
+            return
+        if not adicionar_subtarefa(folha_editar.data, titulo):
+            page.show_dialog(
+                ft.SnackBar(content=ft.Text(f"Limite de {MAX_SUBTAREFAS} subtarefas por tarefa"))
+            )
+            return
+        campo_nova_subtarefa.value = ""
+        montar_subtarefas()
+        page.update()
+
+    campo_nova_subtarefa.on_submit = add_subtarefa
+    linha_add_subtarefa = ft.Row(
+        [
+            campo_nova_subtarefa,
+            ft.IconButton(icon=ft.Icons.ADD_CIRCLE_OUTLINE, icon_color=COR_AZUL, on_click=add_subtarefa),
+        ],
+        spacing=4,
+    )
+
     def abrir_editar(tid):
         t = buscar_tarefa(tid)
         if t is None:
@@ -838,7 +981,9 @@ def main(page: ft.Page):
         dropdown_edit_lista.options = [ft.dropdown.Option(l["nome"]) for l in listar_listas()]
         dropdown_edit_lista.value = t["categoria"]
         dropdown_edit_prioridade.value = NOMES_PRIORIDADE.get(t["prioridade"], "Média")
+        campo_nova_subtarefa.value = ""
         folha_editar.data = tid
+        montar_subtarefas()
         page.show_dialog(folha_editar)
 
     def salvar_edicao(e):
@@ -868,6 +1013,9 @@ def main(page: ft.Page):
                     campo_edit_prazo,
                     dropdown_edit_lista,
                     dropdown_edit_prioridade,
+                    titulo_subtarefas,
+                    subtarefas_coluna,
+                    linha_add_subtarefa,
                     ft.Row(
                         [
                             ft.OutlinedButton(
