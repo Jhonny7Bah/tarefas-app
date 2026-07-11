@@ -74,7 +74,7 @@ a migração e asserta a lógica. Nunca testar contra o `tarefas.db` do projeto.
 - [x] Editar/apagar lista (tela "Gerenciar listas"; Padrão protegida)
 - [x] Busca (pendentes + concluídas, inclui descrição de conclusão)
 - [x] Subtarefas (máx. 10 por tarefa, com timestamps)
-- [ ] Tarefa em mais de uma lista (N:N)
-- [ ] "Repetir" inteligente (reaparece só perto da data)
-- [ ] Notificações Android + build do APK (fazer juntos)
-- [ ] Tela de detalhes mostrando criada_em/concluida_em
+- [x] Tarefa em mais de uma lista (N:N, tabela tarefa_listas)
+- [x] "Repetir" inteligente (próxima ocorrência aparece 1 dia antes do prazo)
+- [x] Timestamps de criação/conclusão visíveis na folha de edição
+- [ ] Notificações Android + build do APK (fazer juntos; exige Flutter SDK)
