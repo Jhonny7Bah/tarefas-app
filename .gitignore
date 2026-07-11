@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+
+# Banco local de desenvolvimento
+tarefas.db
+
+# Build do Flet
+build/
