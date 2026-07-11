@@ -7,6 +7,8 @@ Baseado no documento "Ideia de App Tarefa":
 - Registro de criação e conclusão de cada tarefa
 - Adicionar em lote (uma tarefa por linha)
 - Desfazer a última conclusão
+- Gaveta lateral com listas, contadores e filtro
+- Listas dinâmicas, com opção de ocultar do "Todas"
 - Persistência local com SQLite (roda offline)
 
 Rodar no desktop:   flet run main.py
@@ -21,7 +23,7 @@ import flet as ft
 
 DB = "tarefas.db"
 
-LISTAS = ["Padrão", "Financeiro", "Pessoal", "Compras", "Trabalho", "Tech"]
+LISTAS_INICIAIS = ["Padrão", "Financeiro", "Pessoal", "Compras", "Trabalho", "Tech"]
 
 # prioridade: 2 = alta, 1 = média, 0 = baixa
 PRIORIDADES = {"Alta": 2, "Média": 1, "Baixa": 0}
@@ -50,7 +52,16 @@ def init_db():
         )
         """
     )
-    # Migração: colunas novas em bancos criados pela versão anterior
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS listas (
+            id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome   TEXT NOT NULL UNIQUE,
+            oculta INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    # Migração: colunas novas em bancos criados por versões anteriores
     existentes = {r[1] for r in con.execute("PRAGMA table_info(tarefas)")}
     if "prioridade" not in existentes:
         con.execute("ALTER TABLE tarefas ADD COLUMN prioridade INTEGER NOT NULL DEFAULT 1")
@@ -58,23 +69,76 @@ def init_db():
         con.execute("ALTER TABLE tarefas ADD COLUMN prazo TEXT")
     if "concluida_em" not in existentes:
         con.execute("ALTER TABLE tarefas ADD COLUMN concluida_em TEXT")
+    # Semeia as listas padrão + qualquer categoria que já exista nas tarefas
+    for nome in LISTAS_INICIAIS:
+        con.execute("INSERT OR IGNORE INTO listas (nome) VALUES (?)", (nome,))
+    con.execute(
+        "INSERT OR IGNORE INTO listas (nome) SELECT DISTINCT categoria FROM tarefas"
+    )
     con.commit()
     con.close()
 
 
-def listar_pendentes():
+def listar_listas():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
-    # Prioridade manda; prazo desempata (sem prazo vai pro fim do empate)
-    linhas = con.execute(
-        """
-        SELECT * FROM tarefas
-        WHERE concluida = 0
-        ORDER BY prioridade DESC, (prazo IS NULL), prazo ASC, id DESC
-        """
-    ).fetchall()
+    linhas = con.execute("SELECT * FROM listas ORDER BY nome").fetchall()
     con.close()
     return linhas
+
+
+def criar_lista(nome, oculta=False):
+    con = sqlite3.connect(DB)
+    con.execute(
+        "INSERT OR IGNORE INTO listas (nome, oculta) VALUES (?, ?)",
+        (nome, 1 if oculta else 0),
+    )
+    con.commit()
+    con.close()
+
+
+def listar_pendentes(lista=None):
+    """Pendentes de uma lista, ou de todas (excluindo listas ocultas)."""
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    base = """
+        SELECT t.* FROM tarefas t
+        WHERE t.concluida = 0 {filtro}
+        ORDER BY t.prioridade DESC, (t.prazo IS NULL), t.prazo ASC, t.id DESC
+    """
+    if lista is None:
+        # "Todas": esconde tarefas de listas marcadas como ocultas
+        q = base.format(
+            filtro="AND t.categoria NOT IN (SELECT nome FROM listas WHERE oculta = 1)"
+        )
+        linhas = con.execute(q).fetchall()
+    else:
+        q = base.format(filtro="AND t.categoria = ?")
+        linhas = con.execute(q, (lista,)).fetchall()
+    con.close()
+    return linhas
+
+
+def contagens():
+    """Contadores pra gaveta: pendentes por lista, total 'Todas' e concluídas."""
+    con = sqlite3.connect(DB)
+    por_lista = dict(
+        con.execute(
+            "SELECT categoria, COUNT(*) FROM tarefas WHERE concluida = 0 GROUP BY categoria"
+        ).fetchall()
+    )
+    todas = con.execute(
+        """
+        SELECT COUNT(*) FROM tarefas
+        WHERE concluida = 0
+          AND categoria NOT IN (SELECT nome FROM listas WHERE oculta = 1)
+        """
+    ).fetchone()[0]
+    concluidas = con.execute(
+        "SELECT COUNT(*) FROM tarefas WHERE concluida = 1"
+    ).fetchone()[0]
+    con.close()
+    return {"por_lista": por_lista, "todas": todas, "concluidas": concluidas}
 
 
 def adicionar_tarefa(titulo, categoria, prioridade=1, prazo=None):
@@ -151,13 +215,17 @@ def main(page: ft.Page):
 
     lista_tarefas = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
     ultima_concluida = {"id": None}  # pro botão de desfazer
+    filtro = {"lista": None}  # None = Todas
+
+    subtitulo_appbar = ft.Text("Todas", size=12)
 
     # --- Render ----------------------------------------------------------
     ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
     def render_tarefas():
+        subtitulo_appbar.value = filtro["lista"] or "Todas"
         lista_tarefas.controls.clear()
-        linhas = listar_pendentes()
+        linhas = listar_pendentes(filtro["lista"])
 
         if not linhas:
             lista_tarefas.controls.append(
@@ -250,7 +318,95 @@ def main(page: ft.Page):
             )
         )
 
-    # --- Tela de adicionar (bottom sheet) --------------------------------
+    # --- Gaveta lateral (listas + contadores) -----------------------------
+    def construir_drawer():
+        cont = contagens()
+
+        def badge(n):
+            if not n:
+                return None
+            return ft.Container(
+                ft.Text(str(n), size=11, color="white"),
+                bgcolor=COR_AZUL,
+                border_radius=20,
+                padding=ft.Padding(left=8, top=2, right=8, bottom=2),
+            )
+
+        async def ir_para(e, nome=None):
+            filtro["lista"] = nome
+            await page.close_drawer()
+            render_tarefas()
+
+        itens = [
+            ft.Container(
+                ft.Text("LISTAS DE TAREFAS", size=12, color=COR_TEXTO_SUAVE),
+                padding=ft.Padding(left=16, top=16, right=16, bottom=4),
+            ),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.HOME_OUTLINED),
+                title=ft.Text("Todas"),
+                trailing=badge(cont["todas"]),
+                on_click=ir_para,
+            ),
+        ]
+        for l in listar_listas():
+            icone = ft.Icons.VISIBILITY_OFF_OUTLINED if l["oculta"] else ft.Icons.LIST_ALT_OUTLINED
+
+            async def ir(e, nome=l["nome"]):
+                await ir_para(e, nome)
+
+            itens.append(
+                ft.ListTile(
+                    leading=ft.Icon(icone),
+                    title=ft.Text(l["nome"]),
+                    trailing=badge(cont["por_lista"].get(l["nome"], 0)),
+                    on_click=ir,
+                )
+            )
+        itens += [
+            ft.Divider(),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.ADD),
+                title=ft.Text("Nova lista"),
+                on_click=abrir_nova_lista,
+            ),
+        ]
+        return ft.NavigationDrawer(controls=itens, bgcolor=COR_FUNDO)
+
+    async def abrir_gaveta(e):
+        page.drawer = construir_drawer()  # reconstrói pra atualizar contadores
+        await page.show_drawer()
+
+    # --- Diálogo de nova lista --------------------------------------------
+    campo_nome_lista = ft.TextField(label="Nome da lista", autofocus=True)
+    switch_oculta = ft.Switch(label='Ocultar do "Todas"', value=False)
+
+    async def abrir_nova_lista(e):
+        campo_nome_lista.value = ""
+        switch_oculta.value = False
+        await page.close_drawer()
+        page.show_dialog(dialogo_nova_lista)
+
+    def salvar_lista(e):
+        nome = (campo_nome_lista.value or "").strip()
+        if not nome:
+            return
+        criar_lista(nome, switch_oculta.value)
+        atualizar_opcoes_listas()
+        page.pop_dialog()
+        render_tarefas()
+
+    dialogo_nova_lista = ft.AlertDialog(
+        title=ft.Text("Nova lista"),
+        content=ft.Column([campo_nome_lista, switch_oculta], tight=True, spacing=14),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
+            ft.FilledButton("Salvar", on_click=salvar_lista),
+        ],
+        bgcolor=COR_FUNDO,
+    )
+
+    # --- Tela de adicionar tarefa (bottom sheet) ---------------------------
     campo_titulo = ft.TextField(
         label="O que há para fazer?",
         autofocus=True,
@@ -274,7 +430,7 @@ def main(page: ft.Page):
     dropdown_lista = ft.Dropdown(
         label="Lista de tarefas",
         value="Padrão",
-        options=[ft.dropdown.Option(c) for c in LISTAS],
+        options=[],
         border_color=COR_AZUL,
     )
     dropdown_prioridade = ft.Dropdown(
@@ -283,6 +439,9 @@ def main(page: ft.Page):
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
         border_color=COR_AZUL,
     )
+
+    def atualizar_opcoes_listas():
+        dropdown_lista.options = [ft.dropdown.Option(l["nome"]) for l in listar_listas()]
 
     def salvar(e):
         texto = (campo_titulo.value or "").strip()
@@ -321,12 +480,17 @@ def main(page: ft.Page):
     )
 
     def abrir_adicionar(e):
+        atualizar_opcoes_listas()
+        # Pré-seleciona a lista do filtro atual, como no app de referência
+        if filtro["lista"]:
+            dropdown_lista.value = filtro["lista"]
         page.show_dialog(folha_adicionar)
 
     # --- Estrutura da página ----------------------------------------------
     page.appbar = ft.AppBar(
+        leading=ft.IconButton(icon=ft.Icons.MENU, icon_color="white", on_click=abrir_gaveta),
         title=ft.Column(
-            [ft.Text("Tarefas", size=18, weight=ft.FontWeight.BOLD), ft.Text("Todas", size=12)],
+            [ft.Text("Tarefas", size=18, weight=ft.FontWeight.BOLD), subtitulo_appbar],
             spacing=0,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         ),
@@ -339,6 +503,7 @@ def main(page: ft.Page):
     )
     page.add(ft.Container(lista_tarefas, padding=12, expand=True))
 
+    atualizar_opcoes_listas()
     render_tarefas()
 
 
