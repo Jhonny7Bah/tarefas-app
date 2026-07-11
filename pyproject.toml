@@ -1,0 +1,14 @@
+[project]
+name = "tarefas"
+version = "1.0.0"
+description = "Gerenciador de tarefas offline"
+requires-python = ">=3.12"
+dependencies = [
+    "flet==0.85.3",
+]
+
+[tool.flet]
+# Identidade do app no Android: pacote vira dev.jhon7bah.tarefas
+org = "dev.jhon7bah"
+product = "Tarefas"
+company = "jhon7bah"
