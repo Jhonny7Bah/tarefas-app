@@ -1111,10 +1111,20 @@ def main(page: ft.Page):
                 if s["concluida"]
                 else None
             )
+            datas = f"Criada {formatar_prazo(s['criada_em'])}"
+            if s["concluida_em"]:
+                datas += f"  ·  Concluída {formatar_prazo(s['concluida_em'])}"
             return ft.Row(
                 [
                     ft.Checkbox(value=bool(s["concluida"]), on_change=on_check),
-                    ft.Text(s["titulo"], size=14, expand=True, style=estilo),
+                    ft.Column(
+                        [
+                            ft.Text(s["titulo"], size=14, style=estilo),
+                            ft.Text(datas, size=10, color=COR_TEXTO_SUAVE),
+                        ],
+                        spacing=0,
+                        expand=True,
+                    ),
                     ft.IconButton(
                         icon=ft.Icons.CLOSE, icon_size=16, icon_color=COR_TEXTO_SUAVE, on_click=on_del
                     ),
