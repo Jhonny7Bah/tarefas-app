@@ -70,8 +70,13 @@ Instaladas só pra gerar o APK — anotado pra desinstalar no futuro se quiser:
 
 ```bash
 # Pacotes (AUR, via yay):
-yay -Rns flutter-bin jdk17-openjdk android-sdk-cmdline-tools-latest android-sdk-platform-tools
+yay -Rns jdk17-openjdk android-sdk-cmdline-tools-latest android-sdk-platform-tools
 ```
+
+O `flutter-bin` do AUR foi instalado e **removido logo em seguida** (jul/2026):
+o link `/usr/bin/flutter` dele fazia o `flet build` apagar o `/usr/bin` do
+PATH (bug do `cleanup_path` do Flet) e quebrava com `env: "bash": Arquivo ou
+diretório inexistente`. O flet baixa e usa o Flutter próprio em `~/flutter/`.
 
 Caches e diretórios que essas ferramentas criam por fora (apagar manualmente):
 
@@ -80,6 +85,8 @@ Caches e diretórios que essas ferramentas criam por fora (apagar manualmente):
 - `~/flutter/` — Flutter 3.41.7 que o **flet build** baixa por conta própria
   (ele exige essa versão exata; a do flutter-bin 3.44.6 é só ignorada)
 - `~/.flet/` — caches do Flet
+- `~/.config/flutter/` — settings do Flutter (inclui o jdk-dir apontando
+  pro Java 17)
 - `~/.gradle/` — cache do Gradle (cresce bastante com builds)
 - `~/.pub-cache/` — pacotes do Dart/Flutter
 - `~/.android/` — configs e chaves de debug do Android
