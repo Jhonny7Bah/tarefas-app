@@ -69,6 +69,8 @@ def init_db():
         con.execute("ALTER TABLE tarefas ADD COLUMN prazo TEXT")
     if "concluida_em" not in existentes:
         con.execute("ALTER TABLE tarefas ADD COLUMN concluida_em TEXT")
+    if "descricao_conclusao" not in existentes:
+        con.execute("ALTER TABLE tarefas ADD COLUMN descricao_conclusao TEXT")
     # Semeia as listas padrão + qualquer categoria que já exista nas tarefas
     for nome in LISTAS_INICIAIS:
         con.execute("INSERT OR IGNORE INTO listas (nome) VALUES (?)", (nome,))
@@ -117,6 +119,31 @@ def listar_pendentes(lista=None):
         linhas = con.execute(q, (lista,)).fetchall()
     con.close()
     return linhas
+
+
+def listar_concluidas(lista=None):
+    """Concluídas, mais recentes primeiro. Sempre mostra todas as listas."""
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    q = "SELECT * FROM tarefas WHERE concluida = 1"
+    params = ()
+    if lista is not None:
+        q += " AND categoria = ?"
+        params = (lista,)
+    q += " ORDER BY concluida_em DESC, id DESC"
+    linhas = con.execute(q, params).fetchall()
+    con.close()
+    return linhas
+
+
+def salvar_descricao_conclusao(tid, texto):
+    con = sqlite3.connect(DB)
+    con.execute(
+        "UPDATE tarefas SET descricao_conclusao = ? WHERE id = ?",
+        (texto.strip() or None, tid),
+    )
+    con.commit()
+    con.close()
 
 
 def contagens():
@@ -215,7 +242,7 @@ def main(page: ft.Page):
 
     lista_tarefas = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
     ultima_concluida = {"id": None}  # pro botão de desfazer
-    filtro = {"lista": None}  # None = Todas
+    filtro = {"lista": None, "modo": "pendentes"}  # lista None = Todas
 
     subtitulo_appbar = ft.Text("Todas", size=12)
 
@@ -223,6 +250,10 @@ def main(page: ft.Page):
     ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
     def render_tarefas():
+        if filtro["modo"] == "concluidas":
+            render_concluidas()
+            return
+        page.floating_action_button.visible = True
         subtitulo_appbar.value = filtro["lista"] or "Todas"
         lista_tarefas.controls.clear()
         linhas = listar_pendentes(filtro["lista"])
@@ -303,6 +334,99 @@ def main(page: ft.Page):
             border=ft.Border(left=ft.BorderSide(width=4, color=cor_prio)),
         )
 
+    # --- Tela de Concluídas ------------------------------------------------
+    def render_concluidas():
+        page.floating_action_button.visible = False
+        subtitulo_appbar.value = "Concluídas"
+        lista_tarefas.controls.clear()
+        linhas = listar_concluidas()
+        if not linhas:
+            lista_tarefas.controls.append(
+                ft.Container(
+                    ft.Text("Nenhuma tarefa concluída ainda", color=COR_TEXTO_SUAVE, size=16),
+                    alignment=ft.Alignment(0, 0),
+                    padding=40,
+                )
+            )
+        for t in linhas:
+            lista_tarefas.controls.append(criar_card_concluida(t))
+        page.update()
+
+    def criar_card_concluida(t):
+        def on_uncheck(e, tid=t["id"]):
+            if not e.control.value:
+                marcar_concluida(tid, False)  # volta pra pendentes
+                render_tarefas()
+
+        def editar_descricao(e, tid=t["id"], atual=t["descricao_conclusao"]):
+            campo_descricao.value = atual or ""
+            dialogo_descricao.data = tid
+            page.show_dialog(dialogo_descricao)
+
+        corpo = [
+            ft.Text(t["titulo"], color="white", size=15),
+            ft.Text(
+                f"Concluída em {formatar_prazo(t['concluida_em'])}",
+                size=12,
+                color=COR_TEXTO_SUAVE,
+            ),
+        ]
+        if t["descricao_conclusao"]:
+            corpo.append(
+                ft.Text(t["descricao_conclusao"], size=13, color="#cbd5e1", italic=True)
+            )
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Container(
+                        ft.Text(t["categoria"], size=11, color=COR_TEXTO_SUAVE),
+                        alignment=ft.Alignment(1, -1),
+                    ),
+                    ft.Row(
+                        [
+                            ft.Checkbox(value=True, on_change=on_uncheck, fill_color=COR_AZUL),
+                            ft.Column(corpo, spacing=2, expand=True),
+                            ft.IconButton(
+                                icon=ft.Icons.EDIT_NOTE,
+                                icon_color=COR_TEXTO_SUAVE,
+                                tooltip="Como foi concluída?",
+                                on_click=editar_descricao,
+                            ),
+                        ],
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                    ),
+                ],
+                spacing=0,
+            ),
+            bgcolor=COR_CARD,
+            border_radius=10,
+            padding=ft.Padding(left=12, top=4, right=12, bottom=10),
+        )
+
+    campo_descricao = ft.TextField(
+        label="Como a tarefa foi concluída?",
+        multiline=True,
+        min_lines=2,
+        autofocus=True,
+    )
+
+    def salvar_descricao(e):
+        salvar_descricao_conclusao(dialogo_descricao.data, campo_descricao.value or "")
+        page.pop_dialog()
+        render_tarefas()
+
+    dialogo_descricao = ft.AlertDialog(
+        title=ft.Text("Descrição da conclusão"),
+        content=campo_descricao,
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
+            ft.FilledButton("Salvar", on_click=salvar_descricao),
+        ],
+        bgcolor=COR_FUNDO,
+    )
+
     def mostrar_desfazer(titulo):
         def desfazer(e):
             if ultima_concluida["id"] is not None:
@@ -334,6 +458,12 @@ def main(page: ft.Page):
 
         async def ir_para(e, nome=None):
             filtro["lista"] = nome
+            filtro["modo"] = "pendentes"
+            await page.close_drawer()
+            render_tarefas()
+
+        async def ir_concluidas(e):
+            filtro["modo"] = "concluidas"
             await page.close_drawer()
             render_tarefas()
 
@@ -365,6 +495,12 @@ def main(page: ft.Page):
             )
         itens += [
             ft.Divider(),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.CHECKLIST),
+                title=ft.Text("Concluídas"),
+                trailing=badge(cont["concluidas"]),
+                on_click=ir_concluidas,
+            ),
             ft.ListTile(
                 leading=ft.Icon(ft.Icons.ADD),
                 title=ft.Text("Nova lista"),
