@@ -99,6 +99,23 @@ def criar_lista(nome, oculta=False):
     con.close()
 
 
+def buscar_tarefas(termo):
+    """Busca por título ou descrição de conclusão, pendentes e concluídas."""
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    padrao = "%" + termo.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    linhas = con.execute(
+        r"""
+        SELECT * FROM tarefas
+        WHERE titulo LIKE ? ESCAPE '\' OR descricao_conclusao LIKE ? ESCAPE '\'
+        ORDER BY concluida ASC, prioridade DESC, (prazo IS NULL), prazo ASC, id DESC
+        """,
+        (padrao, padrao),
+    ).fetchall()
+    con.close()
+    return linhas
+
+
 def renomear_lista(lid, novo_nome, oculta):
     """Renomeia/alterna oculta e propaga o novo nome pras tarefas."""
     con = sqlite3.connect(DB)
@@ -319,6 +336,9 @@ def main(page: ft.Page):
         if filtro["modo"] == "listas":
             render_listas()
             return
+        if filtro["modo"] == "busca":
+            render_busca()
+            return
         page.floating_action_button.visible = True
         subtitulo_appbar.value = filtro["lista"] or "Todas"
         lista_tarefas.controls.clear()
@@ -404,6 +424,64 @@ def main(page: ft.Page):
             on_click=on_tap,
             ink=True,
         )
+
+    # --- Busca ---------------------------------------------------------------
+    resultados_busca = ft.Column(spacing=8)
+    campo_busca = ft.TextField(
+        label="Buscar tarefas",
+        prefix_icon=ft.Icons.SEARCH,
+        border_color=COR_AZUL,
+        autofocus=True,
+    )
+
+    def atualizar_resultados_busca(e=None):
+        resultados_busca.controls.clear()
+        termo = (campo_busca.value or "").strip()
+        if termo:
+            linhas = buscar_tarefas(termo)
+            pendentes = [t for t in linhas if not t["concluida"]]
+            concluidas = [t for t in linhas if t["concluida"]]
+            if not linhas:
+                resultados_busca.controls.append(
+                    ft.Container(
+                        ft.Text("Nada encontrado", color=COR_TEXTO_SUAVE, size=14),
+                        alignment=ft.Alignment(0, 0),
+                        padding=20,
+                    )
+                )
+            if pendentes:
+                resultados_busca.controls.append(
+                    ft.Text("Pendentes", color=COR_TEXTO_SUAVE, size=13, weight=ft.FontWeight.BOLD)
+                )
+                for t in pendentes:
+                    resultados_busca.controls.append(
+                        criar_card(t, atrasada=(grupo_da_tarefa(t) == "Atrasada"))
+                    )
+            if concluidas:
+                resultados_busca.controls.append(
+                    ft.Text("Concluídas", color=COR_TEXTO_SUAVE, size=13, weight=ft.FontWeight.BOLD)
+                )
+                for t in concluidas:
+                    resultados_busca.controls.append(criar_card_concluida(t))
+        page.update()
+
+    campo_busca.on_change = atualizar_resultados_busca
+
+    def render_busca():
+        page.floating_action_button.visible = False
+        subtitulo_appbar.value = "Busca"
+        lista_tarefas.controls.clear()
+        lista_tarefas.controls.append(campo_busca)
+        lista_tarefas.controls.append(resultados_busca)
+        atualizar_resultados_busca()
+
+    def alternar_busca(e):
+        if filtro["modo"] == "busca":
+            filtro["modo"] = "pendentes"
+        else:
+            filtro["modo"] = "busca"
+            campo_busca.value = ""
+        render_tarefas()
 
     # --- Tela de gerenciamento de listas ------------------------------------
     def render_listas():
@@ -925,6 +1003,9 @@ def main(page: ft.Page):
         center_title=True,
         bgcolor=COR_AZUL,
         color="white",
+        actions=[
+            ft.IconButton(icon=ft.Icons.SEARCH, icon_color="white", on_click=alternar_busca)
+        ],
     )
     page.floating_action_button = ft.FloatingActionButton(
         icon=ft.Icons.ADD, bgcolor=COR_AZUL, on_click=abrir_adicionar
