@@ -16,8 +16,9 @@ Rodar no navegador: flet run --web main.py
 Empacotar Android:  flet build apk
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
+import calendar
 import sqlite3
 import flet as ft
 
@@ -27,6 +28,7 @@ LISTAS_INICIAIS = ["Padrão", "Financeiro", "Pessoal", "Compras", "Trabalho", "T
 
 # prioridade: 2 = alta, 1 = média, 0 = baixa
 PRIORIDADES = {"Alta": 2, "Média": 1, "Baixa": 0}
+REPETICOES = {"Não repete": None, "Diária": "diaria", "Semanal": "semanal", "Mensal": "mensal"}
 COR_PRIORIDADE = {2: "#ef4444", 1: "#f59e0b", 0: "#475569"}
 
 COR_FUNDO = "#0f2540"
@@ -71,6 +73,10 @@ def init_db():
         con.execute("ALTER TABLE tarefas ADD COLUMN concluida_em TEXT")
     if "descricao_conclusao" not in existentes:
         con.execute("ALTER TABLE tarefas ADD COLUMN descricao_conclusao TEXT")
+    if "repetir" not in existentes:
+        con.execute("ALTER TABLE tarefas ADD COLUMN repetir TEXT")
+    if "aparece_em" not in existentes:
+        con.execute("ALTER TABLE tarefas ADD COLUMN aparece_em TEXT")
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS subtarefas (
@@ -172,7 +178,9 @@ def listar_pendentes(lista=None):
     con.row_factory = sqlite3.Row
     base = """
         SELECT t.* FROM tarefas t
-        WHERE t.concluida = 0 {filtro}
+        WHERE t.concluida = 0
+          AND (t.aparece_em IS NULL OR t.aparece_em <= datetime('now','localtime'))
+          {filtro}
         ORDER BY t.prioridade DESC, (t.prazo IS NULL), t.prazo ASC, t.id DESC
     """
     if lista is None:
@@ -218,13 +226,19 @@ def contagens():
     con = sqlite3.connect(DB)
     por_lista = dict(
         con.execute(
-            "SELECT categoria, COUNT(*) FROM tarefas WHERE concluida = 0 GROUP BY categoria"
+            """
+            SELECT categoria, COUNT(*) FROM tarefas
+            WHERE concluida = 0
+              AND (aparece_em IS NULL OR aparece_em <= datetime('now','localtime'))
+            GROUP BY categoria
+            """
         ).fetchall()
     )
     todas = con.execute(
         """
         SELECT COUNT(*) FROM tarefas
         WHERE concluida = 0
+          AND (aparece_em IS NULL OR aparece_em <= datetime('now','localtime'))
           AND categoria NOT IN (SELECT nome FROM listas WHERE oculta = 1)
         """
     ).fetchone()[0]
@@ -235,21 +249,21 @@ def contagens():
     return {"por_lista": por_lista, "todas": todas, "concluidas": concluidas}
 
 
-def adicionar_tarefa(titulo, categoria, prioridade=1, prazo=None):
+def adicionar_tarefa(titulo, categoria, prioridade=1, prazo=None, repetir=None):
     con = sqlite3.connect(DB)
     con.execute(
-        "INSERT INTO tarefas (titulo, categoria, prioridade, prazo) VALUES (?, ?, ?, ?)",
-        (titulo, categoria, prioridade, prazo),
+        "INSERT INTO tarefas (titulo, categoria, prioridade, prazo, repetir) VALUES (?, ?, ?, ?, ?)",
+        (titulo, categoria, prioridade, prazo, repetir),
     )
     con.commit()
     con.close()
 
 
-def atualizar_tarefa(tid, titulo, categoria, prioridade, prazo):
+def atualizar_tarefa(tid, titulo, categoria, prioridade, prazo, repetir=None):
     con = sqlite3.connect(DB)
     con.execute(
-        "UPDATE tarefas SET titulo = ?, categoria = ?, prioridade = ?, prazo = ? WHERE id = ?",
-        (titulo, categoria, prioridade, prazo, tid),
+        "UPDATE tarefas SET titulo = ?, categoria = ?, prioridade = ?, prazo = ?, repetir = ? WHERE id = ?",
+        (titulo, categoria, prioridade, prazo, repetir, tid),
     )
     con.commit()
     con.close()
@@ -334,13 +348,61 @@ def buscar_tarefa(tid):
     return t
 
 
+# Quantos dias antes do prazo a próxima ocorrência de uma recorrente aparece
+ANTECEDENCIA_REPETICAO = timedelta(days=1)
+
+
+def proxima_ocorrencia(prazo_iso, repetir):
+    """Próximo prazo de uma tarefa recorrente (diaria/semanal/mensal)."""
+    prazo = datetime.fromisoformat(prazo_iso)
+    if repetir == "diaria":
+        prox = prazo + timedelta(days=1)
+    elif repetir == "semanal":
+        prox = prazo + timedelta(days=7)
+    elif repetir == "mensal":
+        ano, mes = (prazo.year, prazo.month + 1) if prazo.month < 12 else (prazo.year + 1, 1)
+        dia = min(prazo.day, calendar.monthrange(ano, mes)[1])
+        prox = prazo.replace(year=ano, month=mes, day=dia)
+    else:
+        return None
+    return prox.isoformat(sep=" ", timespec="minutes")
+
+
 def marcar_concluida(tid, valor):
+    """Conclui/reabre. Se a tarefa repete e tem prazo, agenda a próxima
+    ocorrência (que só aparece perto da data). Retorna o id da ocorrência
+    criada, ou None."""
     con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    novo_id = None
     if valor:
         con.execute(
             "UPDATE tarefas SET concluida = 1, concluida_em = datetime('now','localtime') WHERE id = ?",
             (tid,),
         )
+        t = con.execute("SELECT * FROM tarefas WHERE id = ?", (tid,)).fetchone()
+        if t and t["repetir"] and t["prazo"]:
+            prox = proxima_ocorrencia(t["prazo"], t["repetir"])
+            if prox:
+                aparece = (
+                    datetime.fromisoformat(prox) - ANTECEDENCIA_REPETICAO
+                ).isoformat(sep=" ", timespec="minutes")
+                cur = con.execute(
+                    """
+                    INSERT INTO tarefas (titulo, categoria, prioridade, prazo, repetir, aparece_em)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (t["titulo"], t["categoria"], t["prioridade"], prox, t["repetir"], aparece),
+                )
+                novo_id = cur.lastrowid
+                # Renova o checklist: subtarefas iguais, todas desmarcadas
+                con.execute(
+                    """
+                    INSERT INTO subtarefas (tarefa_id, titulo)
+                    SELECT ?, titulo FROM subtarefas WHERE tarefa_id = ? ORDER BY id
+                    """,
+                    (novo_id, tid),
+                )
     else:
         con.execute(
             "UPDATE tarefas SET concluida = 0, concluida_em = NULL WHERE id = ?",
@@ -348,6 +410,7 @@ def marcar_concluida(tid, valor):
         )
     con.commit()
     con.close()
+    return novo_id
 
 
 def grupo_da_tarefa(t):
@@ -451,10 +514,13 @@ def main(page: ft.Page):
         cor_prio = COR_PRIORIDADE.get(t["prioridade"], "#475569")
 
         def on_check(e, tid=t["id"]):
-            marcar_concluida(tid, e.control.value)
             if e.control.value:
+                clone = marcar_concluida(tid, True)
                 ultima_concluida["id"] = tid
+                ultima_concluida["clone"] = clone
                 mostrar_desfazer(t["titulo"])
+            else:
+                marcar_concluida(tid, False)
             render_tarefas()
 
         # Etiqueta da lista no canto, como no app de referência
@@ -465,8 +531,11 @@ def main(page: ft.Page):
 
         linha_prazo = None
         if t["prazo"]:
+            texto_prazo = formatar_prazo(t["prazo"])
+            if t["repetir"]:
+                texto_prazo += "  ·  🔁"
             linha_prazo = ft.Text(
-                formatar_prazo(t["prazo"]),
+                texto_prazo,
                 size=12,
                 color=COR_ATRASADA if atrasada else COR_TEXTO_SUAVE,
             )
@@ -772,8 +841,12 @@ def main(page: ft.Page):
     def mostrar_desfazer(titulo):
         def desfazer(e):
             if ultima_concluida["id"] is not None:
+                # Se a conclusão agendou a próxima ocorrência, remove ela junto
+                if ultima_concluida.get("clone"):
+                    excluir_tarefa(ultima_concluida["clone"])
                 marcar_concluida(ultima_concluida["id"], False)
                 ultima_concluida["id"] = None
+                ultima_concluida["clone"] = None
                 render_tarefas()
 
         page.show_dialog(
@@ -909,6 +982,12 @@ def main(page: ft.Page):
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
         border_color=COR_AZUL,
     )
+    dropdown_edit_repetir = ft.Dropdown(
+        label="Repetir",
+        options=[ft.dropdown.Option(r) for r in REPETICOES],
+        border_color=COR_AZUL,
+    )
+    NOMES_REPETICAO = {v: k for k, v in REPETICOES.items()}
 
     texto_detalhes = ft.Text("", size=12, color=COR_TEXTO_SUAVE)
 
@@ -983,6 +1062,7 @@ def main(page: ft.Page):
         dropdown_edit_lista.options = [ft.dropdown.Option(l["nome"]) for l in listar_listas()]
         dropdown_edit_lista.value = t["categoria"]
         dropdown_edit_prioridade.value = NOMES_PRIORIDADE.get(t["prioridade"], "Média")
+        dropdown_edit_repetir.value = NOMES_REPETICAO.get(t["repetir"], "Não repete")
         campo_nova_subtarefa.value = ""
         detalhes = f"Criada em {formatar_prazo(t['criada_em'])}"
         if t["concluida_em"]:
@@ -1002,6 +1082,7 @@ def main(page: ft.Page):
             dropdown_edit_lista.value,
             PRIORIDADES[dropdown_edit_prioridade.value],
             parse_prazo(campo_edit_prazo.value or ""),
+            REPETICOES[dropdown_edit_repetir.value],
         )
         page.pop_dialog()
         render_tarefas()
@@ -1020,6 +1101,7 @@ def main(page: ft.Page):
                     campo_edit_prazo,
                     dropdown_edit_lista,
                     dropdown_edit_prioridade,
+                    dropdown_edit_repetir,
                     titulo_subtarefas,
                     subtarefas_coluna,
                     linha_add_subtarefa,
@@ -1094,6 +1176,12 @@ def main(page: ft.Page):
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
         border_color=COR_AZUL,
     )
+    dropdown_repetir = ft.Dropdown(
+        label="Repetir",
+        value="Não repete",
+        options=[ft.dropdown.Option(r) for r in REPETICOES],
+        border_color=COR_AZUL,
+    )
 
     def atualizar_opcoes_listas():
         dropdown_lista.options = [ft.dropdown.Option(l["nome"]) for l in listar_listas()]
@@ -1106,8 +1194,9 @@ def main(page: ft.Page):
         prioridade = PRIORIDADES[dropdown_prioridade.value]
         # Em lote: uma tarefa por linha; senão, uma só
         titulos = [l.strip() for l in texto.split("\n") if l.strip()] if switch_lote.value else [texto]
+        repetir = REPETICOES[dropdown_repetir.value]
         for titulo in titulos:
-            adicionar_tarefa(titulo, dropdown_lista.value, prioridade, prazo)
+            adicionar_tarefa(titulo, dropdown_lista.value, prioridade, prazo, repetir)
         campo_titulo.value = ""
         campo_prazo.value = ""
         page.pop_dialog()
@@ -1123,6 +1212,7 @@ def main(page: ft.Page):
                     campo_prazo,
                     dropdown_lista,
                     dropdown_prioridade,
+                    dropdown_repetir,
                     ft.FilledButton("Salvar", icon=ft.Icons.CHECK, on_click=salvar),
                 ],
                 tight=True,
