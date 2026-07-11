@@ -70,10 +70,11 @@ a migração e asserta a lógica. Nunca testar contra o `tarefas.db` do projeto.
 - [x] Gaveta lateral com listas, contadores e filtro
 - [x] Listas dinâmicas com flag de oculta
 - [x] Tela de Concluídas com descrição de conclusão
-- [ ] Editar/apagar tarefa (e apagar concluídas)
-- [ ] Editar/apagar lista
-- [ ] Busca (pendentes + concluídas)
-- [ ] Subtarefas (máx. 10 por tarefa)
+- [x] Editar/apagar tarefa (e apagar concluídas)
+- [x] Editar/apagar lista (tela "Gerenciar listas"; Padrão protegida)
+- [x] Busca (pendentes + concluídas, inclui descrição de conclusão)
+- [x] Subtarefas (máx. 10 por tarefa, com timestamps)
 - [ ] Tarefa em mais de uma lista (N:N)
 - [ ] "Repetir" inteligente (reaparece só perto da data)
 - [ ] Notificações Android + build do APK (fazer juntos)
+- [ ] Tela de detalhes mostrando criada_em/concluida_em
