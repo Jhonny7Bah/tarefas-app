@@ -64,6 +64,24 @@ scratchpad que importa as funções de dados do `main.py` (removendo o
 `ft.run(main)`), cria um banco temporário, simula o schema antigo pra validar
 a migração e asserta a lógica. Nunca testar contra o `tarefas.db` do projeto.
 
+## Ferramentas instaladas pro build do APK (jul/2026)
+
+Instaladas só pra gerar o APK — anotado pra desinstalar no futuro se quiser:
+
+```bash
+# Pacotes (AUR, via yay):
+yay -Rns flutter-bin jdk17-openjdk android-sdk-cmdline-tools-latest android-sdk-platform-tools
+```
+
+Caches e diretórios que essas ferramentas criam por fora (apagar manualmente):
+
+- `/opt/android-sdk/` — SDK do Android (pode passar de 1 GB)
+- `~/.gradle/` — cache do Gradle (cresce bastante com builds)
+- `~/.pub-cache/` — pacotes do Dart/Flutter
+- `~/.android/` — configs e chaves de debug do Android
+- `~/.dart/` e `~/.flutter` — configs do Flutter
+- `build/` dentro deste projeto — saída do flet build (já está no .gitignore)
+
 ## Roadmap (do documento do usuário)
 
 - [x] Grupos por data, prioridade, prazo, timestamps, lote, desfazer
