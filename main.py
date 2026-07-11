@@ -910,6 +910,8 @@ def main(page: ft.Page):
         border_color=COR_AZUL,
     )
 
+    texto_detalhes = ft.Text("", size=12, color=COR_TEXTO_SUAVE)
+
     # Subtarefas dentro da folha de edição
     titulo_subtarefas = ft.Text("Subtarefas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE)
     subtarefas_coluna = ft.Column(spacing=0)
@@ -982,6 +984,10 @@ def main(page: ft.Page):
         dropdown_edit_lista.value = t["categoria"]
         dropdown_edit_prioridade.value = NOMES_PRIORIDADE.get(t["prioridade"], "Média")
         campo_nova_subtarefa.value = ""
+        detalhes = f"Criada em {formatar_prazo(t['criada_em'])}"
+        if t["concluida_em"]:
+            detalhes += f"  ·  Concluída em {formatar_prazo(t['concluida_em'])}"
+        texto_detalhes.value = detalhes
         folha_editar.data = tid
         montar_subtarefas()
         page.show_dialog(folha_editar)
@@ -1009,6 +1015,7 @@ def main(page: ft.Page):
             ft.Column(
                 [
                     ft.Text("Editar tarefa", size=18, weight=ft.FontWeight.BOLD),
+                    texto_detalhes,
                     campo_edit_titulo,
                     campo_edit_prazo,
                     dropdown_edit_lista,
