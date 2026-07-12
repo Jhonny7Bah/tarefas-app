@@ -10,6 +10,7 @@ Empacotar Android:  flet build apk --split-per-abi
 """
 
 import asyncio
+import os
 from datetime import datetime
 
 import flet as ft
@@ -31,7 +32,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.5.2"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.6.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -1148,7 +1149,40 @@ def main(page: ft.Page):
         filtro["modo"] = "nova"
         render_tarefas()
 
+    # --- Botão voltar do Android --------------------------------------------
+    async def ao_tentar_voltar(e):
+        """Back do sistema: volta uma tela; na raiz, confirma antes de sair."""
+        if filtro["modo"] in ("nova", "editar"):
+            voltar_para_lista()
+        elif filtro["modo"] != "pendentes":
+            filtro["modo"] = "pendentes"
+            render_tarefas()
+        elif filtro["lista"] is not None:
+            filtro["lista"] = None
+            render_tarefas()
+        else:
+            page.show_dialog(dialogo_sair)
+        await e.control.confirm_pop(False)
+
+    def sair_do_app(e):
+        os._exit(0)  # encerra o processo; é o jeito de fechar o app no Android
+
+    dialogo_sair = ft.AlertDialog(
+        title=ft.Text("Sair do app?"),
+        content=ft.Text("Suas tarefas ficam salvas."),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
+            ft.FilledButton("Sair", on_click=sair_do_app),
+        ],
+        bgcolor=COR_FUNDO,
+    )
+
     # --- Estrutura da página ----------------------------------------------
+    # O voltar do sistema é interceptado na View raiz (o Page não tem
+    # property proxy pra can_pop, diferente do appbar)
+    vista_raiz = page.views[0]
+    vista_raiz.can_pop = False
+    vista_raiz.on_confirm_pop = ao_tentar_voltar
     botao_menu.on_click = abrir_gaveta
     botao_busca.on_click = alternar_busca
     botao_voltar.on_click = voltar_para_lista

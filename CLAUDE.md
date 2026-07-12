@@ -51,6 +51,9 @@ A doc/exemplos online usam a API antiga, que **quebra** nessa versão:
   **async** → handlers `async def` com `await`. CUIDADO: `inspect.
   iscoroutinefunction` mente pro `launch_url` (decorator de deprecação
   mascara) — sem await ele silenciosamente não faz nada.
+- `can_pop`/`on_confirm_pop` (botão voltar) moram na **View**, e o `Page`
+  NÃO faz proxy deles (só de appbar/drawer, que têm property explícita) —
+  usar `page.views[0]`.
 - Antes de usar componente novo, validar construção com `.venv/bin/python`.
 
 ## Arquitetura
@@ -169,12 +172,12 @@ a atualização por cima.
 - [x] Edição de tarefa em página inteira (v1.5.0), mesmo padrão do "+";
       guarda de onde veio (lista ou busca) e devolve pro lugar certo ao
       salvar/voltar/excluir
-- [ ] Botão voltar do Android (pedido em 12/07/2026, fazer DEPOIS do
-      backup): interceptar o back do sistema — se estiver numa tela
-      interna (nova tarefa, busca, concluídas...), voltar pra lista em
-      vez de sair do app; se já estiver na lista raiz, perguntar
-      "Deseja sair do app?" com OK/Cancelar. Investigar PopScope/
-      on_confirm_pop do Flet 0.85
+- [x] Botão voltar do Android (v1.6.0): interceptado via View raiz
+      (page.views[0].can_pop = False + on_confirm_pop, sempre chamando
+      await confirm_pop(False)). Cascata: nova/edição volta pra origem,
+      outras telas voltam pras pendentes, lista filtrada volta pro Todas,
+      e na raiz pergunta "Sair do app?" (a saída usa os._exit(0), o jeito
+      de encerrar um app Flet no Android)
 - [ ] Notificações Android (plugin nativo + rebuild) — ADIADO a pedido do
       usuário; é o único item restante do documento original
 - [x] Backup e restauração (v1.4.0): exportar pela gaveta com escolha de
