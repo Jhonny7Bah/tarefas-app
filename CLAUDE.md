@@ -132,8 +132,12 @@ a atualização por cima.
 - [x] Timestamps de criação/conclusão visíveis na folha de edição
 - [x] Build do APK (v1.0.0 instalada no celular do usuário em 11/07/2026;
       `flet build apk --split-per-abi`, instalar o tarefas-arm64-v8a.apk)
-- [ ] Notificações Android (plugin nativo + rebuild)
-- [ ] Botão "verificar atualização" no app — desbloqueado, o app já está
-      no Android
+- [x] Botão "verificar atualização" — ciclo completo validado em 12/07/2026
+      (v1.1.2→v1.1.3 instalada pelo próprio app, dados preservados)
+- [ ] Notificações Android (plugin nativo + rebuild) — ADIADO a pedido do
+      usuário; é o único item restante do documento original
+- [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
+      download e instalação dentro do app, sem navegador — exige extensão
+      nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)
       (o app é offline; checar versão exige um endpoint simples, ex. arquivo
       de versão num GitHub raw/release, comparar e apontar pro APK novo)
