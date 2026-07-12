@@ -54,14 +54,28 @@ A doc/exemplos online usam a API antiga, que **quebra** nessa versão:
 
 ## Arquitetura
 
-Tudo em `main.py`, em duas camadas separadas de propósito:
+Módulos separados por responsabilidade (refatorado em 12/07/2026):
 
-1. **Camada de dados** (topo do arquivo): funções puras de SQLite
-   (`init_db`, `listar_pendentes`, `adicionar_tarefa`, ...). `init_db()` faz
-   migração incremental via `PRAGMA table_info` + `ALTER TABLE` — bancos de
-   versões antigas ganham as colunas novas sem perder dados.
-2. **Interface** (`main(page)`): estado em dicts (`filtro`, `ultima_concluida`),
-   funções `render_*` reconstroem a tela a partir do banco.
+- `constantes.py` — cores do tema, prioridades, repetições, limites.
+- `db.py` — camada de dados: SQLite + regras de domínio, sem nada de Flet
+  (testável sem GUI). `init_db()` faz migração incremental via
+  `PRAGMA table_info` + `ALTER TABLE`; bancos antigos ganham colunas novas
+  sem perder dados.
+- `atualizacao.py` — consulta de releases do GitHub e comparação de versão.
+- `main.py` — só interface (`main(page)`): estado em dicts (`filtro`,
+  `ultima_concluida`), funções `render_*` reconstroem a tela a partir do
+  banco. A `VERSAO` mora aqui (o release.sh depende disso).
+
+A interface é intencionalmente um módulo só: as telas são closures
+interligadas; quebrar em `ui/` só quando houver como testar GUI (fazer
+junto com as notificações, se valer a pena).
+
+**Estilo: PEP 8, verificado com ruff** (config no pyproject: linha até 99,
+regras E/W/F/I/N). Rodar antes de commitar:
+
+```bash
+.venv/bin/ruff check .
+```
 
 ## Como testar
 

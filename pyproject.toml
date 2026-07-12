@@ -13,6 +13,14 @@ org = "dev.jhon7bah"
 product = "Tarefas"
 company = "jhon7bah"
 
+# PEP 8 verificado com ruff (linha até 99, permitido pelo próprio PEP 8)
+[tool.ruff]
+line-length = 99
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N"]
+
 # Internet pro botão "Verificar atualização" consultar o GitHub
 [tool.flet.android.permission]
 "android.permission.INTERNET" = true
