@@ -167,14 +167,21 @@ a atualização por cima.
       seta de voltar na barra, em vez do BottomSheet de meia tela.
       PREFERÊNCIA DO USUÁRIO: formulários em tela cheia, não meia tela —
       considerar migrar a edição de tarefa também no futuro
+- [ ] Botão voltar do Android (pedido em 12/07/2026, fazer DEPOIS do
+      backup): interceptar o back do sistema — se estiver numa tela
+      interna (nova tarefa, busca, concluídas...), voltar pra lista em
+      vez de sair do app; se já estiver na lista raiz, perguntar
+      "Deseja sair do app?" com OK/Cancelar. Investigar PopScope/
+      on_confirm_pop do Flet 0.85
 - [ ] Notificações Android (plugin nativo + rebuild) — ADIADO a pedido do
       usuário; é o único item restante do documento original
-- [ ] Backup e restauração dos dados (pedido em 12/07/2026) — na hora de
-      exportar, o usuário ESCOLHE o formato: JSON único (recomendado; com
-      versão do schema pra migração futura, subtarefas/listas aninhadas)
-      ou cópia direta do arquivo .db (fidelidade total). Restaurar aceita
-      os dois. NÃO usar CSV (4 tabelas relacionais não cabem bem). No
-      Android, salvar/abrir via FilePicker ou compartilhamento
+- [x] Backup e restauração (v1.4.0): exportar pela gaveta com escolha de
+      formato — JSON (recomendado; schema versionado, subtarefas/listas
+      aninhadas) ou cópia fiel do .db. Restaurar aceita os dois (detecta
+      pelo conteúdo), avisa que substitui tudo, valida o arquivo e o
+      banco fica intacto se a importação falhar. FilePicker via
+      page.services; funções em db.py (exportar_json/importar_json/
+      exportar_db_bytes/importar_db_bytes) com testes de ida e volta
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)

@@ -6,6 +6,7 @@ por versões antigas do app ganham as colunas/tabelas novas sem perder dados.
 """
 
 import calendar
+import json
 import os
 import sqlite3
 from datetime import date, datetime, timedelta
@@ -549,3 +550,180 @@ def formatar_prazo(iso):
         )
     except (ValueError, TypeError):
         return iso or ""
+
+
+# ---------------------------------------------------------------------------
+# Backup e restauração
+# ---------------------------------------------------------------------------
+SCHEMA_BACKUP = 1
+
+
+def exportar_json():
+    """Backup completo num JSON legível, com versão do schema."""
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    listas = [
+        {"nome": lst["nome"], "oculta": bool(lst["oculta"])}
+        for lst in con.execute("SELECT * FROM listas ORDER BY nome")
+    ]
+    tarefas = []
+    for t in con.execute("SELECT * FROM tarefas ORDER BY id"):
+        nomes = [
+            r[0]
+            for r in con.execute(
+                "SELECT lista FROM tarefa_listas WHERE tarefa_id = ? ORDER BY lista",
+                (t["id"],),
+            )
+        ]
+        subtarefas = [
+            {
+                "titulo": s["titulo"],
+                "concluida": bool(s["concluida"]),
+                "criada_em": s["criada_em"],
+                "concluida_em": s["concluida_em"],
+            }
+            for s in con.execute(
+                "SELECT * FROM subtarefas WHERE tarefa_id = ? ORDER BY id",
+                (t["id"],),
+            )
+        ]
+        tarefas.append(
+            {
+                "titulo": t["titulo"],
+                "listas": nomes or [t["categoria"]],
+                "concluida": bool(t["concluida"]),
+                "criada_em": t["criada_em"],
+                "concluida_em": t["concluida_em"],
+                "descricao_conclusao": t["descricao_conclusao"],
+                "prioridade": t["prioridade"],
+                "prazo": t["prazo"],
+                "repetir": t["repetir"],
+                "aparece_em": t["aparece_em"],
+                "subtarefas": subtarefas,
+            }
+        )
+    con.close()
+    return json.dumps(
+        {
+            "app": "tarefas",
+            "schema": SCHEMA_BACKUP,
+            "exportado_em": datetime.now().isoformat(sep=" ", timespec="minutes"),
+            "listas": listas,
+            "tarefas": tarefas,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def importar_json(texto):
+    """Restaura um backup JSON, SUBSTITUINDO todos os dados atuais.
+
+    Retorna a quantidade de tarefas restauradas. Levanta ValueError se o
+    arquivo não for um backup válido deste app.
+    """
+    try:
+        dados = json.loads(texto)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError("O arquivo não é um JSON válido.") from exc
+    if not isinstance(dados, dict) or dados.get("app") != "tarefas":
+        raise ValueError("O arquivo não é um backup deste app.")
+    if dados.get("schema", 0) > SCHEMA_BACKUP:
+        raise ValueError("Backup de uma versão mais nova do app. Atualize antes.")
+
+    con = sqlite3.connect(DB)
+    try:
+        con.execute("DELETE FROM subtarefas")
+        con.execute("DELETE FROM tarefa_listas")
+        con.execute("DELETE FROM tarefas")
+        con.execute("DELETE FROM listas")
+        for lst in dados.get("listas", []):
+            con.execute(
+                "INSERT OR IGNORE INTO listas (nome, oculta) VALUES (?, ?)",
+                (lst["nome"], 1 if lst.get("oculta") else 0),
+            )
+        agora = datetime.now().isoformat(sep=" ", timespec="seconds")
+        for t in dados.get("tarefas", []):
+            listas = t.get("listas") or ["Padrão"]
+            cur = con.execute(
+                "INSERT INTO tarefas (titulo, categoria, concluida, criada_em,"
+                " concluida_em, descricao_conclusao, prioridade, prazo, repetir,"
+                " aparece_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    t["titulo"],
+                    listas[0],
+                    1 if t.get("concluida") else 0,
+                    t.get("criada_em") or agora,
+                    t.get("concluida_em"),
+                    t.get("descricao_conclusao"),
+                    t.get("prioridade", 1),
+                    t.get("prazo"),
+                    t.get("repetir"),
+                    t.get("aparece_em"),
+                ),
+            )
+            tid = cur.lastrowid
+            for nome in listas:
+                con.execute("INSERT OR IGNORE INTO listas (nome) VALUES (?)", (nome,))
+                con.execute(
+                    "INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista)"
+                    " VALUES (?, ?)",
+                    (tid, nome),
+                )
+            for s in t.get("subtarefas", []):
+                con.execute(
+                    "INSERT INTO subtarefas (tarefa_id, titulo, concluida,"
+                    " criada_em, concluida_em) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        tid,
+                        s["titulo"],
+                        1 if s.get("concluida") else 0,
+                        s.get("criada_em") or agora,
+                        s.get("concluida_em"),
+                    ),
+                )
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+    init_db()  # garante as listas padrão e qualquer migração pendente
+    return len(dados.get("tarefas", []))
+
+
+def exportar_db_bytes():
+    """Cópia fiel do arquivo do banco, pra backup binário."""
+    with open(DB, "rb") as arquivo:
+        return arquivo.read()
+
+
+def importar_db_bytes(dados):
+    """Restaura um backup .db, SUBSTITUINDO o banco atual.
+
+    Retorna a quantidade de tarefas restauradas. Levanta ValueError se o
+    conteúdo não for um banco SQLite deste app.
+    """
+    if not dados.startswith(b"SQLite format 3\x00"):
+        raise ValueError("O arquivo não é um banco de dados deste app.")
+    temporario = DB + ".restauracao"
+    with open(temporario, "wb") as arquivo:
+        arquivo.write(dados)
+    try:
+        con = sqlite3.connect(temporario)
+        tabelas = {
+            r[0]
+            for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        con.close()
+        if "tarefas" not in tabelas:
+            raise ValueError("O banco não tem as tabelas deste app.")
+        os.replace(temporario, DB)
+    finally:
+        if os.path.exists(temporario):
+            os.remove(temporario)
+    init_db()  # migra o backup se ele veio de uma versão antiga do app
+    con = sqlite3.connect(DB)
+    total = con.execute("SELECT COUNT(*) FROM tarefas").fetchone()[0]
+    con.close()
+    return total

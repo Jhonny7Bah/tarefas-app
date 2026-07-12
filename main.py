@@ -10,6 +10,7 @@ Empacotar Android:  flet build apk --split-per-abi
 """
 
 import asyncio
+from datetime import datetime
 
 import flet as ft
 
@@ -30,7 +31,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.3.1"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.4.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -593,6 +594,16 @@ def main(page: ft.Page):
                 on_click=ir_listas,
             ),
             ft.ListTile(
+                leading=ft.Icon(ft.Icons.UPLOAD_FILE),
+                title=ft.Text("Exportar backup"),
+                on_click=abrir_exportar,
+            ),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE),
+                title=ft.Text("Restaurar backup"),
+                on_click=abrir_restaurar,
+            ),
+            ft.ListTile(
                 leading=ft.Icon(ft.Icons.SYSTEM_UPDATE_ALT),
                 title=ft.Text("Verificar atualização"),
                 on_click=verificar_atualizacao,
@@ -655,6 +666,97 @@ def main(page: ft.Page):
                     content=ft.Text(f"Você já está na última versão (v{VERSAO})")
                 )
             )
+
+    # --- Backup: exportar e restaurar ---------------------------------------
+    seletor_arquivos = ft.FilePicker()
+
+    async def abrir_exportar(e):
+        await page.close_drawer()
+        page.show_dialog(dialogo_exportar)
+
+    async def exportar_backup(formato):
+        page.pop_dialog()
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        if formato == "json":
+            conteudo = db.exportar_json().encode("utf-8")
+            nome = f"tarefas-backup-{hoje}.json"
+        else:
+            conteudo = db.exportar_db_bytes()
+            nome = f"tarefas-backup-{hoje}.db"
+        caminho = await seletor_arquivos.save_file(
+            dialog_title="Salvar backup", file_name=nome, src_bytes=conteudo
+        )
+        if caminho:
+            page.show_dialog(ft.SnackBar(content=ft.Text("Backup salvo!")))
+
+    async def exportar_como_json(e):
+        await exportar_backup("json")
+
+    async def exportar_como_db(e):
+        await exportar_backup("db")
+
+    dialogo_exportar = ft.AlertDialog(
+        title=ft.Text("Exportar backup"),
+        content=ft.Text(
+            "JSON é legível e aguenta restaurar em versões futuras do app. "
+            "O arquivo .db é a cópia fiel do banco."
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
+            ft.TextButton("Arquivo .db", on_click=exportar_como_db),
+            ft.FilledButton("JSON", on_click=exportar_como_json),
+        ],
+        bgcolor=COR_FUNDO,
+    )
+
+    async def abrir_restaurar(e):
+        await page.close_drawer()
+        page.show_dialog(dialogo_restaurar)
+
+    async def escolher_backup(e):
+        page.pop_dialog()
+        arquivos = await seletor_arquivos.pick_files(
+            dialog_title="Escolher backup", allow_multiple=False
+        )
+        if not arquivos:
+            return
+        arquivo = arquivos[0]
+        dados = arquivo.bytes
+        if dados is None and arquivo.path:
+            with open(arquivo.path, "rb") as origem:
+                dados = origem.read()
+        if not dados:
+            page.show_dialog(
+                ft.SnackBar(content=ft.Text("Não consegui ler o arquivo escolhido."))
+            )
+            return
+        try:
+            if dados.startswith(b"SQLite format 3\x00"):
+                total = db.importar_db_bytes(dados)
+            else:
+                total = db.importar_json(dados.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as erro:
+            page.show_dialog(ft.SnackBar(content=ft.Text(str(erro))))
+            return
+        filtro["lista"] = None
+        filtro["modo"] = "pendentes"
+        render_tarefas()
+        page.show_dialog(
+            ft.SnackBar(content=ft.Text(f"Backup restaurado: {total} tarefas."))
+        )
+
+    dialogo_restaurar = ft.AlertDialog(
+        title=ft.Text("Restaurar backup?"),
+        content=ft.Text(
+            "As tarefas e listas atuais serão SUBSTITUÍDAS pelas do arquivo. "
+            "Essa ação não pode ser desfeita."
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
+            ft.FilledButton("Escolher arquivo", on_click=escolher_backup),
+        ],
+        bgcolor=COR_FUNDO,
+    )
 
     # --- Diálogo de nova lista --------------------------------------------
     campo_nome_lista = ft.TextField(label="Nome da lista", autofocus=True)
@@ -1021,6 +1123,7 @@ def main(page: ft.Page):
     botao_menu.on_click = abrir_gaveta
     botao_busca.on_click = alternar_busca
     botao_voltar.on_click = cancelar_nova
+    page.services.append(seletor_arquivos)
     page.appbar = appbar
     fab.on_click = abrir_adicionar
     page.floating_action_button = fab
