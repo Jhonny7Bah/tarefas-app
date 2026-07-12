@@ -31,7 +31,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.5.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.5.1"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -612,7 +612,11 @@ def main(page: ft.Page):
                 on_click=verificar_atualizacao,
             ),
             ft.Container(
-                ft.Text(f"Tarefas v{VERSAO}", size=11, color=COR_TEXTO_SUAVE),
+                ft.Text(
+                    f"Tarefas v{VERSAO}  ·  por jhon7bah",
+                    size=11,
+                    color=COR_TEXTO_SUAVE,
+                ),
                 padding=ft.Padding(left=16, top=8, right=16, bottom=8),
             ),
         ]
