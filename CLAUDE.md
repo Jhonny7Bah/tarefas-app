@@ -16,14 +16,18 @@ no app de referência (Mi Notes/Tarefas, tema azul-marinho escuro).
   quando filtradas diretamente.
 - Toda tarefa registra criação (`criada_em`) e conclusão (`concluida_em`).
 - A descrição de "como foi concluída" só aparece na aba de Concluídas.
+- **Nunca usar travessão (—) em textos visíveis do app** — preferência
+  explícita do usuário (o `·` separador de listas pode).
 - Um commit por feature.
 
 ## Como rodar
 
 ```bash
-flet run main.py          # janela nativa (funciona no Hyprland via XWayland)
-flet run --web main.py    # navegador
-flet build apk            # APK Android (exige Flutter SDK + JDK 17)
+flet run main.py                # janela nativa (funciona no Hyprland via XWayland)
+flet run --web main.py          # navegador
+flet build apk --split-per-abi  # APKs Android (o flet baixa o próprio Flutter;
+                                #  precisa de ANDROID_HOME=/opt/android-sdk e JDK 17)
+./release.sh "o que mudou"      # build + release no GitHub num comando
 ```
 
 Usar sempre o Python do projeto: `.venv/bin/python` (Python 3.14, Flet 0.85.3).
@@ -79,6 +83,8 @@ O `flutter-bin` do AUR foi instalado e **removido logo em seguida** (jul/2026):
 o link `/usr/bin/flutter` dele fazia o `flet build` apagar o `/usr/bin` do
 PATH (bug do `cleanup_path` do Flet) e quebrava com `env: "bash": Arquivo ou
 diretório inexistente`. O flet baixa e usa o Flutter próprio em `~/flutter/`.
+(Os restos dele — montagem unionfs e `~/.cache/flutter_{sdk,local}` — já
+foram limpos em 12/07/2026.)
 
 Caches e diretórios que essas ferramentas criam por fora (apagar manualmente):
 
@@ -104,13 +110,13 @@ constante `VERSAO` do main.py.
 Checklist de release (a ordem importa):
 
 1. Bumpar a versão nos **dois** lugares: `VERSAO` no `main.py` e
-   `[project] version` no `pyproject.toml` (tem teste pra isso).
+   `[project] version` no `pyproject.toml` (o `release.sh` valida isso).
 2. Commit + push.
-3. `flet build apk --split-per-abi`
-4. `gh release create v<versão> build/apk/tarefas-arm64-v8a.apk
-   --title "v<versão>" --notes "<o que mudou>"`
-   — o asset PRECISA ter "arm64" no nome (o botão procura por isso).
-5. No celular: gaveta → Verificar atualização → Baixar → instalar por cima.
+3. `./release.sh "o que mudou"` — builda e publica a release com o APK.
+   (Manual, se precisar: `flet build apk --split-per-abi` +
+   `gh release create v<versão> build/apk/tarefas-arm64-v8a.apk ...`;
+   o asset PRECISA ter "arm64" no nome, o botão procura por isso.)
+4. No celular: gaveta → Verificar atualização → Baixar → instalar por cima.
 
 O banco fica em `FLET_APP_STORAGE_DATA` (persistente), então atualizar não
 apaga as tarefas. NUNCA trocar o pacote (`dev.jhon7bah.tarefas`) nem buildar
@@ -139,5 +145,3 @@ a atualização por cima.
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)
-      (o app é offline; checar versão exige um endpoint simples, ex. arquivo
-      de versão num GitHub raw/release, comparar e apontar pro APK novo)
