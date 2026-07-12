@@ -31,7 +31,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.5.1"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.5.2"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -611,13 +611,31 @@ def main(page: ft.Page):
                 title=ft.Text("Verificar atualização"),
                 on_click=verificar_atualizacao,
             ),
+            ft.Divider(),
             ft.Container(
-                ft.Text(
-                    f"Tarefas v{VERSAO}  ·  por jhon7bah",
-                    size=11,
-                    color=COR_TEXTO_SUAVE,
+                ft.Column(
+                    [
+                        ft.Text(f"Tarefas v{VERSAO}", size=12, color=COR_TEXTO_SUAVE),
+                        ft.Text(
+                            spans=[
+                                ft.TextSpan(
+                                    "desenvolvido por ",
+                                    style=ft.TextStyle(color=COR_TEXTO_SUAVE, size=10),
+                                ),
+                                ft.TextSpan(
+                                    "jhon7bah",
+                                    style=ft.TextStyle(
+                                        color=COR_ACENTO,
+                                        size=10,
+                                        weight=ft.FontWeight.BOLD,
+                                    ),
+                                ),
+                            ]
+                        ),
+                    ],
+                    spacing=2,
                 ),
-                padding=ft.Padding(left=16, top=8, right=16, bottom=8),
+                padding=ft.Padding(left=16, top=4, right=16, bottom=12),
             ),
         ]
         return ft.NavigationDrawer(controls=itens, bgcolor=COR_FUNDO)
