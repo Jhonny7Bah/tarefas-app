@@ -27,7 +27,7 @@ import urllib.request
 
 import flet as ft
 
-VERSAO = "1.1.2"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.1.3"  # manter em sincronia com [project] version no pyproject.toml
 REPO_ATUALIZACAO = "Jhonny7Bah/tarefas-app"
 
 # No Android, FLET_APP_STORAGE_DATA aponta pro diretório de dados persistente
