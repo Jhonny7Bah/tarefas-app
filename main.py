@@ -27,7 +27,7 @@ import urllib.request
 
 import flet as ft
 
-VERSAO = "1.1.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.1.1"  # manter em sincronia com [project] version no pyproject.toml
 REPO_ATUALIZACAO = "Jhonny7Bah/tarefas-app"
 
 # No Android, FLET_APP_STORAGE_DATA aponta pro diretório de dados persistente
@@ -1078,7 +1078,7 @@ def main(page: ft.Page):
             rel = await asyncio.to_thread(buscar_ultima_release)
         except Exception:
             page.show_dialog(
-                ft.SnackBar(content=ft.Text("Não deu pra verificar — sem internet?"))
+                ft.SnackBar(content=ft.Text("Não deu pra verificar. Sem internet?"))
             )
             return
 
