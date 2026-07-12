@@ -9,3 +9,6 @@ tarefas.db
 
 # Build do Flet
 build/
+
+# Dados do app no desktop (flet run)
+storage/

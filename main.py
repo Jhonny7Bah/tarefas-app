@@ -20,10 +20,9 @@ from atualizacao import buscar_ultima_release, parse_versao
 from constantes import (
     COR_ACENTO,
     COR_ATRASADA,
+    COR_BOLINHA_PRIORIDADE,
     COR_CARD,
-    COR_CHIP,
     COR_FUNDO,
-    COR_PRIORIDADE,
     COR_TEXTO_SUAVE,
     MAX_SUBTAREFAS,
     NOMES_PRIORIDADE,
@@ -42,6 +41,8 @@ def main(page: ft.Page):
     page.title = "Tarefas"
     page.bgcolor = COR_FUNDO
     page.theme_mode = ft.ThemeMode.DARK
+    # Semente verde: diálogos, snackbars e afins seguem o tema do app
+    page.theme = ft.Theme(color_scheme_seed=COR_ACENTO)
     page.padding = 0
 
     lista_tarefas = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
@@ -79,6 +80,17 @@ def main(page: ft.Page):
     )
 
     # --- Render ----------------------------------------------------------
+    def avisar(texto, acao=None, on_action=None):
+        """SnackBar com as cores do app."""
+        page.show_dialog(
+            ft.SnackBar(
+                content=ft.Text(texto, color="white"),
+                bgcolor=COR_CARD,
+                action=acao,
+                on_action=on_action,
+            )
+        )
+
     def render_tarefas():
         # barra e conteúdo padrão; o modo "nova" troca pelos dele em seguida
         appbar.leading = botao_menu
@@ -143,25 +155,27 @@ def main(page: ft.Page):
                     )
         page.update()
 
-    def chips_listas(t):
-        """Chips das listas da tarefa, embaixo do título."""
-        return ft.Row(
-            [
-                ft.Container(
-                    ft.Text(nome, size=10, color=COR_ACENTO),
-                    bgcolor=COR_CHIP,
-                    border_radius=999,
-                    padding=ft.Padding(left=8, top=2, right=8, bottom=2),
-                )
-                for nome in db.rotulo_listas(t).split(" · ")
-            ],
-            spacing=6,
-            wrap=True,
+    def chip(texto, cor):
+        """Pílula colorida com fonte sempre branca."""
+        return ft.Container(
+            ft.Text(texto, size=10, color="white"),
+            bgcolor=cor,
+            border_radius=999,
+            padding=ft.Padding(left=9, top=2, right=9, bottom=2),
         )
 
-    def criar_card(t, atrasada=False):
-        cor_prio = COR_PRIORIDADE.get(t["prioridade"], "#4b5563")
+    def chips_do_card(t):
+        """Prioridade (vermelho/âmbar/verde) + listas (sempre cinza)."""
+        chips: list[ft.Control] = [
+            chip(
+                NOMES_PRIORIDADE.get(t["prioridade"], "Média"),
+                COR_BOLINHA_PRIORIDADE.get(t["prioridade"], "#d97706"),
+            )
+        ]
+        chips += [chip(nome, "#4b5563") for nome in db.rotulo_listas(t).split(" · ")]
+        return ft.Row(chips, spacing=6, wrap=True)
 
+    def criar_card(t, atrasada=False):
         def on_check(e, tid=t["id"]):
             if e.control.value:
                 clone = db.marcar_concluida(tid, True)
@@ -195,13 +209,13 @@ def main(page: ft.Page):
                     color=COR_TEXTO_SUAVE,
                 )
             )
-        corpo.append(chips_listas(t))
+        corpo.append(chips_do_card(t))
 
         def on_tap(e, tid=t["id"]):
             abrir_editar(tid)
 
         linha_principal: list[ft.Control] = [
-            ft.Checkbox(value=False, on_change=on_check, fill_color=cor_prio),
+            ft.Checkbox(value=False, on_change=on_check),
             ft.Column(corpo, spacing=4, expand=True),
         ]
         return ft.Container(
@@ -213,7 +227,6 @@ def main(page: ft.Page):
             bgcolor=COR_CARD,
             border_radius=16,
             padding=ft.Padding(left=12, top=10, right=12, bottom=10),
-            border=ft.Border(left=ft.BorderSide(width=4, color=cor_prio)),
             on_click=on_tap,
             ink=True,
         )
@@ -448,10 +461,10 @@ def main(page: ft.Page):
             corpo.append(
                 ft.Text(t["descricao_conclusao"], size=13, color="#d1d5db", italic=True)
             )
-        corpo.append(chips_listas(t))
+        corpo.append(chips_do_card(t))
 
         linha_principal: list[ft.Control] = [
-            ft.Checkbox(value=True, on_change=on_uncheck, fill_color=COR_ACENTO),
+            ft.Checkbox(value=True, on_change=on_uncheck),
             ft.Column(corpo, spacing=4, expand=True),
             ft.IconButton(
                 icon=ft.Icons.EDIT_NOTE,
@@ -512,13 +525,7 @@ def main(page: ft.Page):
                 ultima_concluida["clone"] = None
                 render_tarefas()
 
-        page.show_dialog(
-            ft.SnackBar(
-                content=ft.Text(f'Concluída: "{titulo}"'),
-                action="Desfazer",
-                on_action=desfazer,
-            )
-        )
+        avisar(f'Concluída: "{titulo}"', acao="Desfazer", on_action=desfazer)
 
     # --- Gaveta lateral (listas + contadores) --------------------------------
     def construir_drawer():
@@ -657,13 +664,11 @@ def main(page: ft.Page):
     # --- Verificar atualização ------------------------------------------------
     async def verificar_atualizacao(e):
         await page.close_drawer()
-        page.show_dialog(ft.SnackBar(content=ft.Text("Verificando atualização…")))
+        avisar("Verificando atualização…")
         try:
             rel = await asyncio.to_thread(buscar_ultima_release)
         except Exception:
-            page.show_dialog(
-                ft.SnackBar(content=ft.Text("Não deu pra verificar. Sem internet?"))
-            )
+            avisar("Não deu pra verificar. Sem internet?")
             return
 
         if parse_versao(rel["tag"]) > parse_versao(VERSAO):
@@ -696,11 +701,7 @@ def main(page: ft.Page):
                 )
             )
         else:
-            page.show_dialog(
-                ft.SnackBar(
-                    content=ft.Text(f"Você já está na última versão (v{VERSAO})")
-                )
-            )
+            avisar(f"Você já está na última versão (v{VERSAO})")
 
     # --- Backup: exportar e restaurar ---------------------------------------
     seletor_arquivos = ft.FilePicker()
@@ -722,7 +723,7 @@ def main(page: ft.Page):
             dialog_title="Salvar backup", file_name=nome, src_bytes=conteudo
         )
         if caminho:
-            page.show_dialog(ft.SnackBar(content=ft.Text("Backup salvo!")))
+            avisar("Backup salvo!")
 
     async def exportar_como_json(e):
         await exportar_backup("json")
@@ -761,9 +762,7 @@ def main(page: ft.Page):
             with open(arquivo.path, "rb") as origem:
                 dados = origem.read()
         if not dados:
-            page.show_dialog(
-                ft.SnackBar(content=ft.Text("Não consegui ler o arquivo escolhido."))
-            )
+            avisar("Não consegui ler o arquivo escolhido.")
             return
         try:
             if dados.startswith(b"SQLite format 3\x00"):
@@ -771,14 +770,12 @@ def main(page: ft.Page):
             else:
                 total = db.importar_json(dados.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as erro:
-            page.show_dialog(ft.SnackBar(content=ft.Text(str(erro))))
+            avisar(str(erro))
             return
         filtro["lista"] = None
         filtro["modo"] = "pendentes"
         render_tarefas()
-        page.show_dialog(
-            ft.SnackBar(content=ft.Text(f"Backup restaurado: {total} tarefas."))
-        )
+        avisar(f"Backup restaurado: {total} tarefas.")
 
     dialogo_restaurar = ft.AlertDialog(
         title=ft.Text("Restaurar backup?"),
@@ -917,11 +914,7 @@ def main(page: ft.Page):
         if not titulo:
             return
         if not db.adicionar_subtarefa(tarefa_em_edicao["id"], titulo):
-            page.show_dialog(
-                ft.SnackBar(
-                    content=ft.Text(f"Limite de {MAX_SUBTAREFAS} subtarefas por tarefa")
-                )
-            )
+            avisar(f"Limite de {MAX_SUBTAREFAS} subtarefas por tarefa")
             return
         campo_nova_subtarefa.value = ""
         montar_subtarefas()
@@ -940,8 +933,15 @@ def main(page: ft.Page):
         spacing=4,
     )
 
-    def voltar_para_lista(e=None):
+    async def voltar_para_lista(e=None):
+        # Em duas fases: troca a tela, espera o fade, e SÓ ENTÃO reconstrói
+        # a lista. Trocar e reconstruir no mesmo lote duplica cards na tela
         filtro["modo"] = filtro.get("retorno") or "pendentes"
+        area_conteudo.content = lista_tarefas
+        appbar.leading = botao_menu
+        botao_busca.visible = True
+        page.update()
+        await asyncio.sleep(0.35)
         render_tarefas()
 
     def abrir_editar(tid):
@@ -965,7 +965,7 @@ def main(page: ft.Page):
         filtro["modo"] = "editar"
         render_tarefas()
 
-    def salvar_edicao(e):
+    async def salvar_edicao(e):
         titulo = (campo_edit_titulo.value or "").strip()
         if not titulo:
             return
@@ -977,9 +977,10 @@ def main(page: ft.Page):
             db.parse_prazo(campo_edit_prazo.value or ""),
             REPETICOES[dropdown_edit_repetir.value or "Não repete"],
         )
-        voltar_para_lista()
+        await voltar_para_lista()
 
     def excluir_da_edicao(e):
+        # O diálogo abre por cima da edição; Cancelar mantém o usuário nela
         confirmar_exclusao(tarefa_em_edicao["id"])
 
     # A edição também ocupa a página inteira, como a nova tarefa
@@ -1004,9 +1005,13 @@ def main(page: ft.Page):
                         "Excluir",
                         icon=ft.Icons.DELETE_OUTLINE,
                         on_click=excluir_da_edicao,
+                        style=ft.ButtonStyle(color="white"),
                     ),
                     ft.FilledButton(
-                        "Salvar", icon=ft.Icons.CHECK, on_click=salvar_edicao
+                        "Salvar",
+                        icon=ft.Icons.CHECK,
+                        on_click=salvar_edicao,
+                        style=ft.ButtonStyle(color="white", bgcolor=COR_ACENTO),
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -1029,11 +1034,18 @@ def main(page: ft.Page):
         dialogo_excluir.data = tid
         page.show_dialog(dialogo_excluir)
 
-    def excluir_confirmado(e):
-        db.excluir_tarefa(dialogo_excluir.data)
+    async def excluir_confirmado(e):
+        tid = dialogo_excluir.data
+        # 1) fecha o diálogo e deixa o fechamento terminar (misturar o pop
+        #    com a troca de tela no mesmo lote congela o lado gráfico)
         page.pop_dialog()
-        if filtro["modo"] == "editar":  # a tarefa em edição deixou de existir
-            filtro["modo"] = filtro.get("retorno") or "pendentes"
+        page.update()
+        if filtro["modo"] == "editar":
+            await asyncio.sleep(0.2)
+            # 2) joga o usuário na tela inicial ANTES de excluir de fato
+            await voltar_para_lista()
+        # 3) agora sim, exclui e atualiza a lista
+        db.excluir_tarefa(tid)
         render_tarefas()
 
     dialogo_excluir = ft.AlertDialog(
@@ -1081,7 +1093,7 @@ def main(page: ft.Page):
         border_color=COR_ACENTO,
     )
 
-    def salvar(e):
+    async def salvar(e):
         texto = (campo_titulo.value or "").strip()
         if not texto:
             return
@@ -1096,7 +1108,7 @@ def main(page: ft.Page):
         listas = listas_marcadas(selecao_listas_add) or ["Padrão"]
         for titulo in titulos:
             db.adicionar_tarefa(titulo, listas, prioridade, prazo, repetir)
-        voltar_para_lista()
+        await voltar_para_lista()
 
     # A tela de nova tarefa ocupa a página inteira (nada de meia tela).
     # O respiro no topo evita a label flutuante ser cortada quando o teclado
@@ -1113,9 +1125,16 @@ def main(page: ft.Page):
         ft.Container(
             ft.Row(
                 [
-                    ft.TextButton("Cancelar", on_click=voltar_para_lista),
+                    ft.TextButton(
+                        "Cancelar",
+                        on_click=voltar_para_lista,
+                        style=ft.ButtonStyle(color="white"),
+                    ),
                     ft.FilledButton(
-                        "Salvar tarefa", icon=ft.Icons.CHECK, on_click=salvar
+                        "Salvar tarefa",
+                        icon=ft.Icons.CHECK,
+                        on_click=salvar,
+                        style=ft.ButtonStyle(color="white", bgcolor=COR_ACENTO),
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.END,
@@ -1165,7 +1184,7 @@ def main(page: ft.Page):
             gaveta_aberta["valor"] = False
             await page.close_drawer()
         elif filtro["modo"] in ("nova", "editar"):
-            voltar_para_lista()
+            await voltar_para_lista()
         elif filtro["modo"] != "pendentes":
             filtro["modo"] = "pendentes"
             render_tarefas()

@@ -24,14 +24,22 @@ de cantos arredondados com chips de lista e borda de prioridade.
 ## Como rodar
 
 ```bash
-flet run main.py                # janela nativa (funciona no Hyprland via XWayland)
-flet run --web main.py          # navegador
+flet run --ignore-dirs storage main.py   # janela nativa (SEMPRE com a flag!)
+flet run --web main.py                   # navegador
 flet build apk --split-per-abi  # APKs Android (o flet baixa o próprio Flutter;
                                 #  precisa de ANDROID_HOME=/opt/android-sdk e JDK 17)
 ./release.sh "o que mudou"      # build + release no GitHub num comando
 ```
 
 Usar sempre o Python do projeto: `.venv/bin/python` (Python 3.14, Flet 0.85.3).
+
+**Por que o `--ignore-dirs storage` é obrigatório no desktop:** o `flet run`
+vigia a pasta do projeto pra hot-reload e reinicia o app em QUALQUER mudança
+de arquivo — e o banco fica em `storage/data/` (é o FLET_APP_STORAGE_DATA que
+o próprio flet run define). Sem a flag, cada gravação no banco reinicia o app
+no meio do render: banner vermelho de reconexão, tela congelada e cards
+"duplicados" (só visual; o banco fica correto). No Android não existe watcher,
+então nada disso acontece no celular.
 
 ## ⚠️ Flet 0.85 — APIs que mudaram
 
@@ -54,6 +62,14 @@ A doc/exemplos online usam a API antiga, que **quebra** nessa versão:
 - `can_pop`/`on_confirm_pop` (botão voltar) moram na **View**, e o `Page`
   NÃO faz proxy deles (só de appbar/drawer, que têm property explícita) —
   usar `page.views[0]`.
+- Cor hexadecimal de 8 dígitos é **#AARRGGBB** (alpha PRIMEIRO, padrão
+  Flutter), não #RRGGBBAA como no CSS — "#ffffff12" vira AMARELO opaco.
+- NUNCA trocar o `content` do AnimatedSwitcher e reconstruir os filhos do
+  novo conteúdo no MESMO lote de update: duplica visualmente os controles.
+  Padrão: trocar o content + page.update(), `await asyncio.sleep(0.35)`
+  (o fade), e só então reconstruir (ver `voltar_para_lista`). O mesmo vale
+  pra fechar diálogo e trocar tela juntos: congela o front (ver
+  `excluir_confirmado`).
 - Antes de usar componente novo, validar construção com `.venv/bin/python`.
 
 ## Arquitetura

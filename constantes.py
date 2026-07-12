@@ -19,10 +19,12 @@ NOMES_REPETICAO = {v: k for k, v in REPETICOES.items()}
 
 MAX_SUBTAREFAS = 10
 
-COR_PRIORIDADE = {2: "#ef4444", 1: "#f59e0b", 0: "#4b5563"}
 COR_FUNDO = "#121417"
 COR_CARD = "#1e2227"
 COR_ACENTO = "#10b981"
-COR_CHIP = "#10b9811f"  # verde translúcido dos chips de lista
 COR_TEXTO_SUAVE = "#9ca3af"
 COR_ATRASADA = "#f87171"
+
+# Cor da pílula do chip de prioridade (a fonte do chip é sempre branca);
+# tons -600 pra ter contraste com o texto branco
+COR_BOLINHA_PRIORIDADE = {2: "#dc2626", 1: "#d97706", 0: "#059669"}

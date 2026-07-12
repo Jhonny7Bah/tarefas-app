@@ -14,9 +14,11 @@ from datetime import date, datetime, timedelta
 from constantes import LISTAS_INICIAIS, MAX_SUBTAREFAS
 
 # No Android, FLET_APP_STORAGE_DATA aponta pro diretório de dados persistente
-# do app (sobrevive a atualizações). No desktop a variável não existe e o
-# banco fica na pasta atual, como sempre.
-DB = os.path.join(os.getenv("FLET_APP_STORAGE_DATA") or ".", "tarefas.db")
+# do app (sobrevive a atualizações). No desktop o flet run também define a
+# variável, mas sem criar a pasta; sem o makedirs o sqlite não abre o banco.
+_DIR_DADOS = os.getenv("FLET_APP_STORAGE_DATA") or "."
+os.makedirs(_DIR_DADOS, exist_ok=True)
+DB = os.path.join(_DIR_DADOS, "tarefas.db")
 
 # Subconsulta usada nos SELECTs pra montar a etiqueta "Financeiro · Pessoal"
 _AGG_LISTAS = (
