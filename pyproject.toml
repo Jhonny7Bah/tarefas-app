@@ -30,4 +30,5 @@ exclude = [
     "build.tar",
     "CLAUDE.md",
     "requirements.txt",
+    "release.sh",
 ]
