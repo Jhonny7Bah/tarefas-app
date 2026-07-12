@@ -33,7 +33,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.6.4"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.6.5"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -909,12 +909,14 @@ def main(page: ft.Page):
     )
     selecao_listas_edit = ft.Column(spacing=0)
     dropdown_edit_prioridade = ft.Dropdown(
+        expand=True,
         label="Prioridade",
         label_style=ETIQUETA_BRANCA,
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
         border_color=COR_ACENTO,
     )
     dropdown_edit_repetir = ft.Dropdown(
+        expand=True,
         label="Repetir",
         label_style=ETIQUETA_BRANCA,
         options=[ft.dropdown.Option(r) for r in REPETICOES],
@@ -1068,7 +1070,7 @@ def main(page: ft.Page):
         confirmar_exclusao(tarefa_em_edicao["id"])
 
     # A edição também ocupa a página inteira, como a nova tarefa
-    vista_editar_tarefa = ft.Column(
+    form_editar_tarefa = ft.Column(
         [
             ft.Container(height=16),
             texto_detalhes,
@@ -1078,8 +1080,8 @@ def main(page: ft.Page):
                 "Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE
             ),
             selecao_listas_edit,
-            dropdown_edit_prioridade,
-            dropdown_edit_repetir,
+            ft.Row([dropdown_edit_prioridade]),
+            ft.Row([dropdown_edit_repetir]),
             titulo_subtarefas,
             subtarefas_coluna,
             linha_add_subtarefa,
@@ -1102,6 +1104,15 @@ def main(page: ft.Page):
             ),
         ],
         spacing=14,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
+    vista_editar_tarefa = ft.Column(
+        [
+            ft.Container(
+                form_editar_tarefa,
+                padding=ft.Padding(left=4, top=0, right=14, bottom=8),
+            )
+        ],
         scroll=ft.ScrollMode.AUTO,
         expand=True,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
@@ -1181,6 +1192,7 @@ def main(page: ft.Page):
     )
     selecao_listas_add = ft.Column(spacing=0)
     dropdown_prioridade = ft.Dropdown(
+        expand=True,
         label="Prioridade",
         label_style=ETIQUETA_BRANCA,
         value="Média",
@@ -1188,6 +1200,7 @@ def main(page: ft.Page):
         border_color=COR_ACENTO,
     )
     dropdown_repetir = ft.Dropdown(
+        expand=True,
         label="Repetir",
         label_style=ETIQUETA_BRANCA,
         value="Não repete",
@@ -1222,8 +1235,8 @@ def main(page: ft.Page):
         campo_prazo,
         ft.Text("Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE),
         selecao_listas_add,
-        dropdown_prioridade,
-        dropdown_repetir,
+        ft.Row([dropdown_prioridade]),
+        ft.Row([dropdown_repetir]),
         ft.Container(
             ft.Row(
                 [
@@ -1246,9 +1259,19 @@ def main(page: ft.Page):
         ),
     ]
 
+    # O Container interno dá respiro nas laterais: a barra de rolagem fica
+    # no trilho dela, sem cobrir a borda dos campos
     vista_nova_tarefa = ft.Column(
-        form_nova_tarefa,
-        spacing=14,
+        [
+            ft.Container(
+                ft.Column(
+                    form_nova_tarefa,
+                    spacing=14,
+                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                ),
+                padding=ft.Padding(left=4, top=0, right=14, bottom=8),
+            )
+        ],
         scroll=ft.ScrollMode.AUTO,
         expand=True,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
