@@ -165,8 +165,10 @@ a atualização por cima.
       Usabilidade intacta. Cores centralizadas em constantes.py
 - [x] Nova tarefa em página inteira (v1.3.0): o "+" abre a tela toda com
       seta de voltar na barra, em vez do BottomSheet de meia tela.
-      PREFERÊNCIA DO USUÁRIO: formulários em tela cheia, não meia tela —
-      considerar migrar a edição de tarefa também no futuro
+      PREFERÊNCIA DO USUÁRIO: formulários em tela cheia, não meia tela
+- [x] Edição de tarefa em página inteira (v1.5.0), mesmo padrão do "+";
+      guarda de onde veio (lista ou busca) e devolve pro lugar certo ao
+      salvar/voltar/excluir
 - [ ] Botão voltar do Android (pedido em 12/07/2026, fazer DEPOIS do
       backup): interceptar o back do sistema — se estiver numa tela
       interna (nova tarefa, busca, concluídas...), voltar pra lista em

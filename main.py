@@ -31,7 +31,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.4.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.5.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -85,6 +85,9 @@ def main(page: ft.Page):
         area_conteudo.content = lista_tarefas
         if filtro["modo"] == "nova":
             render_nova_tarefa()
+            return
+        if filtro["modo"] == "editar":
+            render_editar_tarefa()
             return
         if filtro["modo"] == "concluidas":
             render_concluidas()
@@ -787,6 +790,7 @@ def main(page: ft.Page):
     )
 
     # --- Edição e exclusão de tarefa ---------------------------------------
+    tarefa_em_edicao: dict[str, int | None] = {"id": None}
     campo_edit_titulo = ft.TextField(
         label="O que precisa ser feito?", border_color=COR_ACENTO
     )
@@ -818,7 +822,7 @@ def main(page: ft.Page):
     def listas_marcadas(coluna):
         return [c.label for c in coluna.controls if c.value]
 
-    # Subtarefas dentro da folha de edição
+    # Subtarefas dentro da tela de edição
     titulo_subtarefas = ft.Text(
         "Subtarefas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE
     )
@@ -828,7 +832,7 @@ def main(page: ft.Page):
     )
 
     def montar_subtarefas():
-        tid = folha_editar.data
+        tid = tarefa_em_edicao["id"]
         subs = db.listar_subtarefas(tid)
         titulo_subtarefas.value = f"Subtarefas ({len(subs)}/{MAX_SUBTAREFAS})"
         linha_add_subtarefa.visible = len(subs) < MAX_SUBTAREFAS
@@ -880,7 +884,7 @@ def main(page: ft.Page):
         titulo = (campo_nova_subtarefa.value or "").strip()
         if not titulo:
             return
-        if not db.adicionar_subtarefa(folha_editar.data, titulo):
+        if not db.adicionar_subtarefa(tarefa_em_edicao["id"], titulo):
             page.show_dialog(
                 ft.SnackBar(
                     content=ft.Text(f"Limite de {MAX_SUBTAREFAS} subtarefas por tarefa")
@@ -904,6 +908,10 @@ def main(page: ft.Page):
         spacing=4,
     )
 
+    def voltar_para_lista(e=None):
+        filtro["modo"] = filtro.get("retorno") or "pendentes"
+        render_tarefas()
+
     def abrir_editar(tid):
         t = db.buscar_tarefa(tid)
         if t is None:
@@ -918,71 +926,72 @@ def main(page: ft.Page):
         if t["concluida_em"]:
             detalhes += f"  ·  Concluída em {db.formatar_prazo(t['concluida_em'])}"
         texto_detalhes.value = detalhes
-        folha_editar.data = tid
+        tarefa_em_edicao["id"] = tid
         montar_subtarefas()
-        page.show_dialog(folha_editar)
+        # de onde veio (lista ou busca), pra devolver no lugar certo
+        filtro["retorno"] = filtro["modo"]
+        filtro["modo"] = "editar"
+        render_tarefas()
 
     def salvar_edicao(e):
         titulo = (campo_edit_titulo.value or "").strip()
         if not titulo:
             return
         db.atualizar_tarefa(
-            folha_editar.data,
+            tarefa_em_edicao["id"],
             titulo,
             listas_marcadas(selecao_listas_edit),
             PRIORIDADES[dropdown_edit_prioridade.value or "Média"],
             db.parse_prazo(campo_edit_prazo.value or ""),
             REPETICOES[dropdown_edit_repetir.value or "Não repete"],
         )
-        page.pop_dialog()
-        render_tarefas()
+        voltar_para_lista()
 
     def excluir_da_edicao(e):
-        page.pop_dialog()
-        confirmar_exclusao(folha_editar.data)
+        confirmar_exclusao(tarefa_em_edicao["id"])
 
-    folha_editar = ft.BottomSheet(
-        ft.Container(
-            ft.Column(
+    # A edição também ocupa a página inteira, como a nova tarefa
+    vista_editar_tarefa = ft.Column(
+        [
+            ft.Container(height=16),
+            texto_detalhes,
+            campo_edit_titulo,
+            campo_edit_prazo,
+            ft.Text(
+                "Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE
+            ),
+            selecao_listas_edit,
+            dropdown_edit_prioridade,
+            dropdown_edit_repetir,
+            titulo_subtarefas,
+            subtarefas_coluna,
+            linha_add_subtarefa,
+            ft.Row(
                 [
-                    ft.Text("Editar tarefa", size=18, weight=ft.FontWeight.BOLD),
-                    texto_detalhes,
-                    campo_edit_titulo,
-                    campo_edit_prazo,
-                    ft.Text(
-                        "Listas",
-                        size=14,
-                        weight=ft.FontWeight.BOLD,
-                        color=COR_TEXTO_SUAVE,
+                    ft.OutlinedButton(
+                        "Excluir",
+                        icon=ft.Icons.DELETE_OUTLINE,
+                        on_click=excluir_da_edicao,
                     ),
-                    selecao_listas_edit,
-                    dropdown_edit_prioridade,
-                    dropdown_edit_repetir,
-                    titulo_subtarefas,
-                    subtarefas_coluna,
-                    linha_add_subtarefa,
-                    ft.Row(
-                        [
-                            ft.OutlinedButton(
-                                "Excluir",
-                                icon=ft.Icons.DELETE_OUTLINE,
-                                on_click=excluir_da_edicao,
-                            ),
-                            ft.FilledButton(
-                                "Salvar", icon=ft.Icons.CHECK, on_click=salvar_edicao
-                            ),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    ft.FilledButton(
+                        "Salvar", icon=ft.Icons.CHECK, on_click=salvar_edicao
                     ),
                 ],
-                tight=True,
-                spacing=14,
-                scroll=ft.ScrollMode.AUTO,
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             ),
-            padding=20,
-            bgcolor=COR_FUNDO,
-        ),
+        ],
+        spacing=14,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
     )
+
+    def render_editar_tarefa():
+        fab.visible = False
+        appbar.leading = botao_voltar
+        botao_busca.visible = False
+        subtitulo_appbar.value = "Editar tarefa"
+        area_conteudo.content = vista_editar_tarefa
+        page.update()
 
     def confirmar_exclusao(tid):
         dialogo_excluir.data = tid
@@ -991,6 +1000,8 @@ def main(page: ft.Page):
     def excluir_confirmado(e):
         db.excluir_tarefa(dialogo_excluir.data)
         page.pop_dialog()
+        if filtro["modo"] == "editar":  # a tarefa em edição deixou de existir
+            filtro["modo"] = filtro.get("retorno") or "pendentes"
         render_tarefas()
 
     dialogo_excluir = ft.AlertDialog(
@@ -1053,12 +1064,7 @@ def main(page: ft.Page):
         listas = listas_marcadas(selecao_listas_add) or ["Padrão"]
         for titulo in titulos:
             db.adicionar_tarefa(titulo, listas, prioridade, prazo, repetir)
-        filtro["modo"] = "pendentes"
-        render_tarefas()
-
-    def cancelar_nova(e):
-        filtro["modo"] = "pendentes"
-        render_tarefas()
+        voltar_para_lista()
 
     # A tela de nova tarefa ocupa a página inteira (nada de meia tela).
     # O respiro no topo evita a label flutuante ser cortada quando o teclado
@@ -1075,7 +1081,7 @@ def main(page: ft.Page):
         ft.Container(
             ft.Row(
                 [
-                    ft.TextButton("Cancelar", on_click=cancelar_nova),
+                    ft.TextButton("Cancelar", on_click=voltar_para_lista),
                     ft.FilledButton(
                         "Salvar tarefa", icon=ft.Icons.CHECK, on_click=salvar
                     ),
@@ -1116,13 +1122,14 @@ def main(page: ft.Page):
         dropdown_prioridade.value = "Média"
         dropdown_repetir.value = "Não repete"
         montar_selecao_listas(selecao_listas_add, {filtro["lista"] or "Padrão"})
+        filtro["retorno"] = "pendentes"
         filtro["modo"] = "nova"
         render_tarefas()
 
     # --- Estrutura da página ----------------------------------------------
     botao_menu.on_click = abrir_gaveta
     botao_busca.on_click = alternar_busca
-    botao_voltar.on_click = cancelar_nova
+    botao_voltar.on_click = voltar_para_lista
     page.services.append(seletor_arquivos)
     page.appbar = appbar
     fab.on_click = abrir_adicionar
