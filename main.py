@@ -42,8 +42,10 @@ def main(page: ft.Page):
     page.padding = 0
 
     lista_tarefas = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
-    ultima_concluida = {"id": None}  # pro botão de desfazer
+    # pro botão de desfazer (id da tarefa e da ocorrência criada pelo repetir)
+    ultima_concluida: dict[str, int | None] = {"id": None, "clone": None}
     filtro = {"lista": None, "modo": "pendentes"}  # lista None = Todas
+    fab = ft.FloatingActionButton(icon=ft.Icons.ADD, bgcolor=COR_AZUL)
 
     subtitulo_appbar = ft.Text("Todas", size=12)
 
@@ -58,7 +60,7 @@ def main(page: ft.Page):
         if filtro["modo"] == "busca":
             render_busca()
             return
-        page.floating_action_button.visible = True
+        fab.visible = True
         subtitulo_appbar.value = filtro["lista"] or "Todas"
         lista_tarefas.controls.clear()
         linhas = db.listar_pendentes(filtro["lista"])
@@ -124,7 +126,7 @@ def main(page: ft.Page):
                 color=COR_ATRASADA if atrasada else COR_TEXTO_SUAVE,
             )
 
-        corpo = [ft.Text(t["titulo"], color="white", size=15)]
+        corpo: list[ft.Control] = [ft.Text(t["titulo"], color="white", size=15)]
         if linha_prazo:
             corpo.append(linha_prazo)
         feitas, total_subs = db.progresso_subtarefas(t["id"])
@@ -140,23 +142,20 @@ def main(page: ft.Page):
         def on_tap(e, tid=t["id"]):
             abrir_editar(tid)
 
-        return ft.Container(
-            content=ft.Column(
-                [
-                    etiqueta,
-                    ft.Row(
-                        [
-                            ft.Checkbox(
-                                value=False, on_change=on_check, fill_color=cor_prio
-                            ),
-                            ft.Column(corpo, spacing=2, expand=True),
-                        ],
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.START,
-                    ),
-                ],
-                spacing=0,
+        linha_principal: list[ft.Control] = [
+            ft.Checkbox(value=False, on_change=on_check, fill_color=cor_prio),
+            ft.Column(corpo, spacing=2, expand=True),
+        ]
+        conteudo_card: list[ft.Control] = [
+            etiqueta,
+            ft.Row(
+                linha_principal,
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.START,
             ),
+        ]
+        return ft.Container(
+            content=ft.Column(conteudo_card, spacing=0),
             bgcolor=COR_CARD,
             border_radius=10,
             padding=ft.Padding(left=12, top=4, right=12, bottom=10),
@@ -218,7 +217,7 @@ def main(page: ft.Page):
     campo_busca.on_change = atualizar_resultados_busca
 
     def render_busca():
-        page.floating_action_button.visible = False
+        fab.visible = False
         subtitulo_appbar.value = "Busca"
         lista_tarefas.controls.clear()
         lista_tarefas.controls.append(campo_busca)
@@ -235,7 +234,7 @@ def main(page: ft.Page):
 
     # --- Tela de gerenciamento de listas ------------------------------------
     def render_listas():
-        page.floating_action_button.visible = True
+        fab.visible = True
         subtitulo_appbar.value = "Listas de tarefas"
         lista_tarefas.controls.clear()
         totais = db.contar_por_lista_total()
@@ -349,7 +348,7 @@ def main(page: ft.Page):
 
     # --- Tela de Concluídas --------------------------------------------------
     def render_concluidas():
-        page.floating_action_button.visible = False
+        fab.visible = False
         subtitulo_appbar.value = "Concluídas"
         lista_tarefas.controls.clear()
         linhas = db.listar_concluidas()
@@ -383,7 +382,7 @@ def main(page: ft.Page):
         def ao_excluir(e, tid=t["id"]):
             confirmar_exclusao(tid)
 
-        corpo = [
+        corpo: list[ft.Control] = [
             ft.Text(t["titulo"], color="white", size=15),
             ft.Text(
                 f"Concluída em {db.formatar_prazo(t['concluida_em'])}",
@@ -396,38 +395,35 @@ def main(page: ft.Page):
                 ft.Text(t["descricao_conclusao"], size=13, color="#cbd5e1", italic=True)
             )
 
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Container(
-                        ft.Text(db.rotulo_listas(t), size=11, color=COR_TEXTO_SUAVE),
-                        alignment=ft.Alignment(1, -1),
-                    ),
-                    ft.Row(
-                        [
-                            ft.Checkbox(
-                                value=True, on_change=on_uncheck, fill_color=COR_AZUL
-                            ),
-                            ft.Column(corpo, spacing=2, expand=True),
-                            ft.IconButton(
-                                icon=ft.Icons.EDIT_NOTE,
-                                icon_color=COR_TEXTO_SUAVE,
-                                tooltip="Como foi concluída?",
-                                on_click=editar_descricao,
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.DELETE_OUTLINE,
-                                icon_color=COR_ATRASADA,
-                                tooltip="Excluir",
-                                on_click=ao_excluir,
-                            ),
-                        ],
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.START,
-                    ),
-                ],
-                spacing=0,
+        linha_principal: list[ft.Control] = [
+            ft.Checkbox(value=True, on_change=on_uncheck, fill_color=COR_AZUL),
+            ft.Column(corpo, spacing=2, expand=True),
+            ft.IconButton(
+                icon=ft.Icons.EDIT_NOTE,
+                icon_color=COR_TEXTO_SUAVE,
+                tooltip="Como foi concluída?",
+                on_click=editar_descricao,
             ),
+            ft.IconButton(
+                icon=ft.Icons.DELETE_OUTLINE,
+                icon_color=COR_ATRASADA,
+                tooltip="Excluir",
+                on_click=ao_excluir,
+            ),
+        ]
+        conteudo_card: list[ft.Control] = [
+            ft.Container(
+                ft.Text(db.rotulo_listas(t), size=11, color=COR_TEXTO_SUAVE),
+                alignment=ft.Alignment(1, -1),
+            ),
+            ft.Row(
+                linha_principal,
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+            ),
+        ]
+        return ft.Container(
+            content=ft.Column(conteudo_card, spacing=0),
             bgcolor=COR_CARD,
             border_radius=10,
             padding=ft.Padding(left=12, top=4, right=12, bottom=10),
@@ -585,7 +581,9 @@ def main(page: ft.Page):
             notas = rel["notas"].strip()
             if len(notas) > 500:
                 notas = notas[:500] + "…"
-            conteudo = [ft.Text(f"Instalada: v{VERSAO}   →   Nova: {rel['tag']}")]
+            conteudo: list[ft.Control] = [
+                ft.Text(f"Instalada: v{VERSAO}   →   Nova: {rel['tag']}")
+            ]
             if notas:
                 conteudo.append(ft.Text(notas, size=12, color=COR_TEXTO_SUAVE))
 
@@ -973,9 +971,8 @@ def main(page: ft.Page):
             )
         ],
     )
-    page.floating_action_button = ft.FloatingActionButton(
-        icon=ft.Icons.ADD, bgcolor=COR_AZUL, on_click=abrir_adicionar
-    )
+    fab.on_click = abrir_adicionar
+    page.floating_action_button = fab
     page.add(ft.Container(lista_tarefas, padding=12, expand=True))
 
     render_tarefas()

@@ -13,6 +13,10 @@ org = "dev.jhon7bah"
 product = "Tarefas"
 company = "jhon7bah"
 
+# Mesmo modo de verificação de tipos do Pylance no editor do usuário
+[tool.pyright]
+typeCheckingMode = "basic"
+
 # PEP 8 verificado com ruff; 88 colunas, o mesmo limite do Flake8 do editor
 [tool.ruff]
 line-length = 88
