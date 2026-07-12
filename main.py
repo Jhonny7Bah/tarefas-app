@@ -33,7 +33,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.6.2"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.6.3"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -44,10 +44,18 @@ def main(page: ft.Page):
     page.bgcolor = COR_FUNDO
     page.theme_mode = ft.ThemeMode.DARK
     # Semente verde: diálogos, snackbars e afins seguem o tema do app.
-    # O verde vivo no action do SnackBar evita o "Desfazer" apagado
+    # A barra de status do Android ganha uma faixa própria num verde mais
+    # escuro (em vez do app desenhar embaixo do relógio/bateria), e a barra
+    # de navegação inferior segue o fundo do app
     page.theme = ft.Theme(
         color_scheme_seed=COR_ACENTO,
         snackbar_theme=ft.SnackBarTheme(action_text_color="#34d399"),
+        system_overlay_style=ft.SystemOverlayStyle(
+            status_bar_color="#059669",
+            status_bar_icon_brightness=ft.Brightness.LIGHT,
+            system_navigation_bar_color=COR_FUNDO,
+            system_navigation_bar_icon_brightness=ft.Brightness.LIGHT,
+        ),
     )
     page.padding = 0
 
@@ -116,6 +124,8 @@ def main(page: ft.Page):
         """Aviso nas cores do app; some sozinho em 4 segundos."""
         aviso_estado["seq"] += 1
         seq = aviso_estado["seq"]
+        # flutua acima do "+" quando ele está na tela, pra não cobrir
+        aviso_container.bottom = 88 if fab.visible else 16
         aviso_texto.value = texto
         if acao and on_action:
 
