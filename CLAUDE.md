@@ -200,6 +200,17 @@ a atualização por cima.
       de encerrar um app Flet no Android)
 - [ ] Notificações Android (plugin nativo + rebuild) — ADIADO a pedido do
       usuário; é o único item restante do documento original
+- [x] MIGRAÇÃO CONCLUÍDA (13/07/2026): as 64 tarefas reais do app antigo
+      (backup .tasksbak, SQLite com tabelas Task/TaskList) foram
+      convertidas pro JSON do nosso backup e restauradas no celular do
+      usuário via "Restaurar backup". O app antigo está aposentado;
+      este app é agora o gerenciador de tarefas titular do usuário
+- [x] Rodada de polimento v1.6.2–v1.6.6 (validada tela a tela pelo
+      usuário no desktop): fluxo de exclusão com Desfazer completo,
+      aviso próprio animado acima do FAB, pílulas de prioridade, tema
+      unificado (labels/botões brancos), faixa na barra de status do
+      Android, campos e dropdowns de largura cheia, e barra de rolagem
+      com trilho próprio (sem cobrir cards/campos)
 - [x] Backup e restauração (v1.4.0): exportar pela gaveta com escolha de
       formato — JSON (recomendado; schema versionado, subtarefas/listas
       aninhadas) ou cópia fiel do .db. Restaurar aceita os dois (detecta
