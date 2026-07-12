@@ -33,7 +33,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.6.5"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.6.6"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -59,10 +59,23 @@ def main(page: ft.Page):
     )
     page.padding = 0
 
-    lista_tarefas = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
+    # A rolagem fica na vista externa; o recuo à direita impede a barra de
+    # rolagem de cobrir a borda dos cards
+    lista_tarefas = ft.Column(spacing=8)
+    vista_lista = ft.Column(
+        [
+            ft.Container(
+                lista_tarefas,
+                padding=ft.Padding(left=0, top=0, right=14, bottom=8),
+            )
+        ],
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
     # Troca animada entre a lista e a tela de nova tarefa (nada de corte seco)
     area_conteudo = ft.AnimatedSwitcher(
-        content=lista_tarefas,
+        content=vista_lista,
         transition=ft.AnimatedSwitcherTransition.FADE,
         duration=300,
         reverse_duration=300,
@@ -167,7 +180,7 @@ def main(page: ft.Page):
         # barra e conteúdo padrão; o modo "nova" troca pelos dele em seguida
         appbar.leading = botao_menu
         botao_busca.visible = True
-        area_conteudo.content = lista_tarefas
+        area_conteudo.content = vista_lista
         if filtro["modo"] == "nova":
             render_nova_tarefa()
             return
@@ -1023,7 +1036,7 @@ def main(page: ft.Page):
         # Em duas fases: troca a tela, espera o fade, e SÓ ENTÃO reconstrói
         # a lista. Trocar e reconstruir no mesmo lote duplica cards na tela
         filtro["modo"] = filtro.get("retorno") or "pendentes"
-        area_conteudo.content = lista_tarefas
+        area_conteudo.content = vista_lista
         appbar.leading = botao_menu
         botao_busca.visible = True
         page.update()
