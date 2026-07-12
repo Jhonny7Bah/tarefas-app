@@ -31,7 +31,9 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.6.1"  # manter em sincronia com [project] version no pyproject.toml
+ETIQUETA_BRANCA = ft.TextStyle(color="white")
+
+VERSAO = "1.6.2"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -41,8 +43,12 @@ def main(page: ft.Page):
     page.title = "Tarefas"
     page.bgcolor = COR_FUNDO
     page.theme_mode = ft.ThemeMode.DARK
-    # Semente verde: diálogos, snackbars e afins seguem o tema do app
-    page.theme = ft.Theme(color_scheme_seed=COR_ACENTO)
+    # Semente verde: diálogos, snackbars e afins seguem o tema do app.
+    # O verde vivo no action do SnackBar evita o "Desfazer" apagado
+    page.theme = ft.Theme(
+        color_scheme_seed=COR_ACENTO,
+        snackbar_theme=ft.SnackBarTheme(action_text_color="#34d399"),
+    )
     page.padding = 0
 
     lista_tarefas = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
@@ -80,15 +86,71 @@ def main(page: ft.Page):
     )
 
     # --- Render ----------------------------------------------------------
+    # Aviso próprio (o SnackBar do Flet não anima o fechamento manual):
+    # sobe suave, e após 4 segundos desliza pra baixo com fade
+    aviso_texto = ft.Text("", color="white", size=14, expand=True)
+    aviso_botao = ft.TextButton(
+        "", visible=False, style=ft.ButtonStyle(color="#34d399")
+    )
+    aviso_container = ft.Container(
+        content=ft.Row([aviso_texto, aviso_botao], spacing=8),
+        bgcolor=COR_CARD,
+        border_radius=12,
+        padding=ft.Padding(left=16, top=6, right=8, bottom=6),
+        left=16,
+        right=16,
+        bottom=16,
+        offset=ft.Offset(0, 2),
+        animate_offset=250,
+        opacity=0,
+        animate_opacity=250,
+    )
+    aviso_estado = {"seq": 0}
+
+    def esconder_aviso():
+        aviso_container.offset = ft.Offset(0, 2)
+        aviso_container.opacity = 0
+        page.update()
+
     def avisar(texto, acao=None, on_action=None):
-        """SnackBar com as cores do app."""
-        page.show_dialog(
-            ft.SnackBar(
-                content=ft.Text(texto, color="white"),
-                bgcolor=COR_CARD,
-                action=acao,
-                on_action=on_action,
-            )
+        """Aviso nas cores do app; some sozinho em 4 segundos."""
+        aviso_estado["seq"] += 1
+        seq = aviso_estado["seq"]
+        aviso_texto.value = texto
+        if acao and on_action:
+
+            def clique(e, handler=on_action):
+                esconder_aviso()
+                handler(e)
+
+            aviso_botao.content = acao
+            aviso_botao.on_click = clique
+            aviso_botao.visible = True
+        else:
+            aviso_botao.visible = False
+        aviso_container.offset = ft.Offset(0, 0)
+        aviso_container.opacity = 1
+        page.update()
+
+        async def sumir_depois():
+            await asyncio.sleep(4)
+            if aviso_estado["seq"] == seq:  # nenhum aviso mais novo por cima
+                esconder_aviso()
+
+        page.run_task(sumir_depois)
+
+    # Botões com fonte branca (o tema deixaria verde) pros diálogos e formulários
+    def botao_texto(rotulo, on_click):
+        return ft.TextButton(
+            rotulo, on_click=on_click, style=ft.ButtonStyle(color="white")
+        )
+
+    def botao_cheio(rotulo, on_click, icone=None):
+        return ft.FilledButton(
+            rotulo,
+            icon=icone,
+            on_click=on_click,
+            style=ft.ButtonStyle(color="white", bgcolor=COR_ACENTO),
         )
 
     def render_tarefas():
@@ -235,6 +297,7 @@ def main(page: ft.Page):
     resultados_busca = ft.Column(spacing=8)
     campo_busca = ft.TextField(
         label="Buscar tarefas",
+        label_style=ETIQUETA_BRANCA,
         prefix_icon=ft.Icons.SEARCH,
         border_color=COR_ACENTO,
         autofocus=True,
@@ -358,7 +421,9 @@ def main(page: ft.Page):
             )
         page.update()
 
-    campo_edit_nome_lista = ft.TextField(label="Nome da lista", autofocus=True)
+    campo_edit_nome_lista = ft.TextField(
+        label="Nome da lista", label_style=ETIQUETA_BRANCA, autofocus=True
+    )
     switch_edit_oculta = ft.Switch(label='Ocultar do "Todas"', value=False)
 
     def abrir_editar_lista(lid, nome, oculta):
@@ -383,8 +448,8 @@ def main(page: ft.Page):
             [campo_edit_nome_lista, switch_edit_oculta], tight=True, spacing=14
         ),
         actions=[
-            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
-            ft.FilledButton("Salvar", on_click=salvar_edicao_lista),
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Salvar", salvar_edicao_lista),
         ],
         bgcolor=COR_FUNDO,
     )
@@ -407,8 +472,8 @@ def main(page: ft.Page):
         title=ft.Text("Excluir lista?"),
         content=ft.Text(""),
         actions=[
-            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
-            ft.FilledButton("Excluir", on_click=excluir_lista_confirmada),
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Excluir", excluir_lista_confirmada),
         ],
         bgcolor=COR_FUNDO,
     )
@@ -492,6 +557,7 @@ def main(page: ft.Page):
 
     campo_descricao = ft.TextField(
         label="Como a tarefa foi concluída?",
+        label_style=ETIQUETA_BRANCA,
         multiline=True,
         min_lines=2,
         autofocus=True,
@@ -508,8 +574,8 @@ def main(page: ft.Page):
         title=ft.Text("Descrição da conclusão"),
         content=campo_descricao,
         actions=[
-            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
-            ft.FilledButton("Salvar", on_click=salvar_descricao),
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Salvar", salvar_descricao),
         ],
         bgcolor=COR_FUNDO,
     )
@@ -692,10 +758,8 @@ def main(page: ft.Page):
                         conteudo, tight=True, spacing=10, scroll=ft.ScrollMode.AUTO
                     ),
                     actions=[
-                        ft.TextButton("Depois", on_click=lambda ev: page.pop_dialog()),
-                        ft.FilledButton(
-                            "Baixar", icon=ft.Icons.DOWNLOAD, on_click=baixar
-                        ),
+                        botao_texto("Depois", lambda ev: page.pop_dialog()),
+                        botao_cheio("Baixar", baixar, icone=ft.Icons.DOWNLOAD),
                     ],
                     bgcolor=COR_FUNDO,
                 )
@@ -738,9 +802,9 @@ def main(page: ft.Page):
             "O arquivo .db é a cópia fiel do banco."
         ),
         actions=[
-            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
-            ft.TextButton("Arquivo .db", on_click=exportar_como_db),
-            ft.FilledButton("JSON", on_click=exportar_como_json),
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_texto("Arquivo .db", exportar_como_db),
+            botao_cheio("JSON", exportar_como_json),
         ],
         bgcolor=COR_FUNDO,
     )
@@ -784,14 +848,16 @@ def main(page: ft.Page):
             "Essa ação não pode ser desfeita."
         ),
         actions=[
-            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
-            ft.FilledButton("Escolher arquivo", on_click=escolher_backup),
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Escolher arquivo", escolher_backup),
         ],
         bgcolor=COR_FUNDO,
     )
 
     # --- Diálogo de nova lista --------------------------------------------
-    campo_nome_lista = ft.TextField(label="Nome da lista", autofocus=True)
+    campo_nome_lista = ft.TextField(
+        label="Nome da lista", label_style=ETIQUETA_BRANCA, autofocus=True
+    )
     switch_oculta = ft.Switch(label='Ocultar do "Todas"', value=False)
 
     async def abrir_nova_lista(e):
@@ -812,8 +878,8 @@ def main(page: ft.Page):
         title=ft.Text("Nova lista"),
         content=ft.Column([campo_nome_lista, switch_oculta], tight=True, spacing=14),
         actions=[
-            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
-            ft.FilledButton("Salvar", on_click=salvar_lista),
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Salvar", salvar_lista),
         ],
         bgcolor=COR_FUNDO,
     )
@@ -821,21 +887,26 @@ def main(page: ft.Page):
     # --- Edição e exclusão de tarefa ---------------------------------------
     tarefa_em_edicao: dict[str, int | None] = {"id": None}
     campo_edit_titulo = ft.TextField(
-        label="O que precisa ser feito?", border_color=COR_ACENTO
+        label="O que precisa ser feito?",
+        label_style=ETIQUETA_BRANCA,
+        border_color=COR_ACENTO,
     )
     campo_edit_prazo = ft.TextField(
         label="Prazo (opcional)",
+        label_style=ETIQUETA_BRANCA,
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
         border_color=COR_ACENTO,
     )
     selecao_listas_edit = ft.Column(spacing=0)
     dropdown_edit_prioridade = ft.Dropdown(
         label="Prioridade",
+        label_style=ETIQUETA_BRANCA,
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
         border_color=COR_ACENTO,
     )
     dropdown_edit_repetir = ft.Dropdown(
         label="Repetir",
+        label_style=ETIQUETA_BRANCA,
         options=[ft.dropdown.Option(r) for r in REPETICOES],
         border_color=COR_ACENTO,
     )
@@ -857,7 +928,10 @@ def main(page: ft.Page):
     )
     subtarefas_coluna = ft.Column(spacing=0)
     campo_nova_subtarefa = ft.TextField(
-        label="Nova subtarefa", border_color=COR_ACENTO, expand=True
+        label="Nova subtarefa",
+        label_style=ETIQUETA_BRANCA,
+        border_color=COR_ACENTO,
+        expand=True,
     )
 
     def montar_subtarefas():
@@ -1044,16 +1118,29 @@ def main(page: ft.Page):
             await asyncio.sleep(0.2)
             # 2) joga o usuário na tela inicial ANTES de excluir de fato
             await voltar_para_lista()
-        # 3) agora sim, exclui e atualiza a lista
+        # 3) agora sim, exclui (guardando a foto pro desfazer) e atualiza
+        foto = db.snapshot_tarefa(tid)
         db.excluir_tarefa(tid)
         render_tarefas()
+
+        def desfazer_exclusao(ev, foto=foto):
+            if foto is not None:
+                db.restaurar_tarefa(foto)
+                render_tarefas()
+
+        if foto is not None:
+            avisar(
+                f'Excluída: "{foto["tarefa"]["titulo"]}"',
+                acao="Desfazer",
+                on_action=desfazer_exclusao,
+            )
 
     dialogo_excluir = ft.AlertDialog(
         title=ft.Text("Excluir tarefa?"),
         content=ft.Text("Essa ação não pode ser desfeita."),
         actions=[
-            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
-            ft.FilledButton("Excluir", on_click=excluir_confirmado),
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Excluir", excluir_confirmado),
         ],
         bgcolor=COR_FUNDO,
     )
@@ -1062,6 +1149,7 @@ def main(page: ft.Page):
     # Sem autofocus: o teclado só sobe quando a pessoa tocar no campo
     campo_titulo = ft.TextField(
         label="O que precisa ser feito?",
+        label_style=ETIQUETA_BRANCA,
         border_color=COR_ACENTO,
     )
     switch_lote = ft.Switch(label="Criar várias de uma vez", value=False)
@@ -1076,18 +1164,21 @@ def main(page: ft.Page):
 
     campo_prazo = ft.TextField(
         label="Prazo (opcional)",
+        label_style=ETIQUETA_BRANCA,
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
         border_color=COR_ACENTO,
     )
     selecao_listas_add = ft.Column(spacing=0)
     dropdown_prioridade = ft.Dropdown(
         label="Prioridade",
+        label_style=ETIQUETA_BRANCA,
         value="Média",
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
         border_color=COR_ACENTO,
     )
     dropdown_repetir = ft.Dropdown(
         label="Repetir",
+        label_style=ETIQUETA_BRANCA,
         value="Não repete",
         options=[ft.dropdown.Option(r) for r in REPETICOES],
         border_color=COR_ACENTO,
@@ -1202,8 +1293,8 @@ def main(page: ft.Page):
         title=ft.Text("Sair do app?"),
         content=ft.Text("Suas tarefas ficam salvas."),
         actions=[
-            ft.TextButton("Cancelar", on_click=lambda e: page.pop_dialog()),
-            ft.FilledButton("Sair", on_click=sair_do_app),
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Sair", sair_do_app),
         ],
         bgcolor=COR_FUNDO,
     )
@@ -1218,6 +1309,7 @@ def main(page: ft.Page):
     botao_busca.on_click = alternar_busca
     botao_voltar.on_click = voltar_para_lista
     page.services.append(seletor_arquivos)
+    page.overlay.append(aviso_container)
     page.appbar = appbar
     fab.on_click = abrir_adicionar
     page.floating_action_button = fab

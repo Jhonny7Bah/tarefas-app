@@ -554,6 +554,58 @@ def formatar_prazo(iso):
         return iso or ""
 
 
+def snapshot_tarefa(tid):
+    """Foto completa de uma tarefa (com listas e subtarefas), pro desfazer."""
+    t = buscar_tarefa(tid)
+    if t is None:
+        return None
+    return {
+        "tarefa": dict(t),
+        "listas": listas_da_tarefa(tid),
+        "subtarefas": [dict(s) for s in listar_subtarefas(tid)],
+    }
+
+
+def restaurar_tarefa(snap):
+    """Reinsere uma tarefa excluída a partir do snapshot. Retorna o novo id."""
+    t = snap["tarefa"]
+    listas = snap["listas"] or [t["categoria"]]
+    con = sqlite3.connect(DB)
+    cur = con.execute(
+        "INSERT INTO tarefas (titulo, categoria, concluida, criada_em,"
+        " concluida_em, descricao_conclusao, prioridade, prazo, repetir,"
+        " aparece_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            t["titulo"],
+            listas[0],
+            t["concluida"],
+            t["criada_em"],
+            t["concluida_em"],
+            t["descricao_conclusao"],
+            t["prioridade"],
+            t["prazo"],
+            t["repetir"],
+            t["aparece_em"],
+        ),
+    )
+    novo_id = cur.lastrowid
+    for nome in listas:
+        con.execute("INSERT OR IGNORE INTO listas (nome) VALUES (?)", (nome,))
+        con.execute(
+            "INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista) VALUES (?, ?)",
+            (novo_id, nome),
+        )
+    for s in snap["subtarefas"]:
+        con.execute(
+            "INSERT INTO subtarefas (tarefa_id, titulo, concluida, criada_em,"
+            " concluida_em) VALUES (?, ?, ?, ?, ?)",
+            (novo_id, s["titulo"], s["concluida"], s["criada_em"], s["concluida_em"]),
+        )
+    con.commit()
+    con.close()
+    return novo_id
+
+
 # ---------------------------------------------------------------------------
 # Backup e restauração
 # ---------------------------------------------------------------------------
