@@ -163,8 +163,18 @@ a atualização por cima.
       em 12/07/2026): paleta grafite + verde-esmeralda, textos com voz
       própria, cards com chips de lista, AppBar à esquerda, ícone novo.
       Usabilidade intacta. Cores centralizadas em constantes.py
+- [x] Nova tarefa em página inteira (v1.3.0): o "+" abre a tela toda com
+      seta de voltar na barra, em vez do BottomSheet de meia tela.
+      PREFERÊNCIA DO USUÁRIO: formulários em tela cheia, não meia tela —
+      considerar migrar a edição de tarefa também no futuro
 - [ ] Notificações Android (plugin nativo + rebuild) — ADIADO a pedido do
       usuário; é o único item restante do documento original
+- [ ] Backup e restauração dos dados (pedido em 12/07/2026) — na hora de
+      exportar, o usuário ESCOLHE o formato: JSON único (recomendado; com
+      versão do schema pra migração futura, subtarefas/listas aninhadas)
+      ou cópia direta do arquivo .db (fidelidade total). Restaurar aceita
+      os dois. NÃO usar CSV (4 tabelas relacionais não cabem bem). No
+      Android, salvar/abrir via FilePicker ou compartilhamento
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)

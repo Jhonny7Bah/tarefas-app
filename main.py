@@ -30,7 +30,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.2.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.3.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -49,9 +49,31 @@ def main(page: ft.Page):
     fab = ft.FloatingActionButton(icon=ft.Icons.ADD, bgcolor=COR_ACENTO)
 
     subtitulo_appbar = ft.Text("Todas", size=12)
+    # Botões da barra; os handlers são ligados no fim do main()
+    botao_menu = ft.IconButton(icon=ft.Icons.MENU, icon_color="white")
+    botao_voltar = ft.IconButton(icon=ft.Icons.ARROW_BACK, icon_color="white")
+    botao_busca = ft.IconButton(icon=ft.Icons.SEARCH, icon_color="white")
+    appbar = ft.AppBar(
+        leading=botao_menu,
+        title=ft.Column(
+            [ft.Text("Tarefas", size=18, weight=ft.FontWeight.BOLD), subtitulo_appbar],
+            spacing=0,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+        ),
+        center_title=False,
+        bgcolor=COR_ACENTO,
+        color="white",
+        actions=[botao_busca],
+    )
 
     # --- Render ----------------------------------------------------------
     def render_tarefas():
+        # barra padrão; o modo "nova" troca pela versão dele logo em seguida
+        appbar.leading = botao_menu
+        botao_busca.visible = True
+        if filtro["modo"] == "nova":
+            render_nova_tarefa()
+            return
         if filtro["modo"] == "concluidas":
             render_concluidas()
             return
@@ -868,7 +890,7 @@ def main(page: ft.Page):
         bgcolor=COR_FUNDO,
     )
 
-    # --- Tela de adicionar tarefa (bottom sheet) ---------------------------
+    # --- Tela de adicionar tarefa (página inteira) --------------------------
     campo_titulo = ft.TextField(
         label="O que precisa ser feito?",
         autofocus=True,
@@ -918,38 +940,45 @@ def main(page: ft.Page):
         listas = listas_marcadas(selecao_listas_add) or ["Padrão"]
         for titulo in titulos:
             db.adicionar_tarefa(titulo, listas, prioridade, prazo, repetir)
-        campo_titulo.value = ""
-        campo_prazo.value = ""
-        page.pop_dialog()
+        filtro["modo"] = "pendentes"
         render_tarefas()
 
-    folha_adicionar = ft.BottomSheet(
+    def cancelar_nova(e):
+        filtro["modo"] = "pendentes"
+        render_tarefas()
+
+    # A tela de nova tarefa ocupa a página inteira (nada de meia tela)
+    form_nova_tarefa: list[ft.Control] = [
+        campo_titulo,
+        switch_lote,
+        campo_prazo,
+        ft.Text("Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE),
+        selecao_listas_add,
+        dropdown_prioridade,
+        dropdown_repetir,
         ft.Container(
-            ft.Column(
+            ft.Row(
                 [
-                    ft.Text("Nova tarefa", size=18, weight=ft.FontWeight.BOLD),
-                    campo_titulo,
-                    switch_lote,
-                    campo_prazo,
-                    ft.Text(
-                        "Listas",
-                        size=14,
-                        weight=ft.FontWeight.BOLD,
-                        color=COR_TEXTO_SUAVE,
+                    ft.TextButton("Cancelar", on_click=cancelar_nova),
+                    ft.FilledButton(
+                        "Salvar tarefa", icon=ft.Icons.CHECK, on_click=salvar
                     ),
-                    selecao_listas_add,
-                    dropdown_prioridade,
-                    dropdown_repetir,
-                    ft.FilledButton("Salvar", icon=ft.Icons.CHECK, on_click=salvar),
                 ],
-                tight=True,
-                spacing=14,
-                scroll=ft.ScrollMode.AUTO,
+                alignment=ft.MainAxisAlignment.END,
+                spacing=12,
             ),
-            padding=20,
-            bgcolor=COR_FUNDO,
+            padding=ft.Padding(left=0, top=8, right=0, bottom=0),
         ),
-    )
+    ]
+
+    def render_nova_tarefa():
+        fab.visible = False
+        appbar.leading = botao_voltar
+        botao_busca.visible = False
+        subtitulo_appbar.value = "Nova tarefa"
+        lista_tarefas.controls.clear()
+        lista_tarefas.controls.extend(form_nova_tarefa)
+        page.update()
 
     def abrir_adicionar(e):
         # Na tela de gerenciamento, o "+" cria uma lista; nas demais, uma tarefa
@@ -958,29 +987,24 @@ def main(page: ft.Page):
             switch_oculta.value = False
             page.show_dialog(dialogo_nova_lista)
             return
-        # Pré-seleciona a lista do filtro atual
+        # Formulário sempre abre limpo, com a lista do filtro atual marcada
+        campo_titulo.value = ""
+        campo_prazo.value = ""
+        switch_lote.value = False
+        campo_titulo.multiline = False
+        campo_titulo.min_lines = 1
+        campo_titulo.hint_text = None
+        dropdown_prioridade.value = "Média"
+        dropdown_repetir.value = "Não repete"
         montar_selecao_listas(selecao_listas_add, {filtro["lista"] or "Padrão"})
-        page.show_dialog(folha_adicionar)
+        filtro["modo"] = "nova"
+        render_tarefas()
 
     # --- Estrutura da página ----------------------------------------------
-    page.appbar = ft.AppBar(
-        leading=ft.IconButton(
-            icon=ft.Icons.MENU, icon_color="white", on_click=abrir_gaveta
-        ),
-        title=ft.Column(
-            [ft.Text("Tarefas", size=18, weight=ft.FontWeight.BOLD), subtitulo_appbar],
-            spacing=0,
-            horizontal_alignment=ft.CrossAxisAlignment.START,
-        ),
-        center_title=False,
-        bgcolor=COR_ACENTO,
-        color="white",
-        actions=[
-            ft.IconButton(
-                icon=ft.Icons.SEARCH, icon_color="white", on_click=alternar_busca
-            )
-        ],
-    )
+    botao_menu.on_click = abrir_gaveta
+    botao_busca.on_click = alternar_busca
+    botao_voltar.on_click = cancelar_nova
+    page.appbar = appbar
     fab.on_click = abrir_adicionar
     page.floating_action_button = fab
     page.add(ft.Container(lista_tarefas, padding=12, expand=True))
