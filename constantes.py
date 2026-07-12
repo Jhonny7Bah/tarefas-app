@@ -1,4 +1,7 @@
-"""Constantes compartilhadas: tema de cores, prioridades e repetições."""
+"""Constantes compartilhadas: tema de cores, prioridades e repetições.
+
+Identidade visual própria desde a v1.2.0: grafite + verde-esmeralda.
+"""
 
 LISTAS_INICIAIS = ["Padrão", "Financeiro", "Pessoal", "Compras", "Trabalho", "Tech"]
 
@@ -16,9 +19,10 @@ NOMES_REPETICAO = {v: k for k, v in REPETICOES.items()}
 
 MAX_SUBTAREFAS = 10
 
-COR_PRIORIDADE = {2: "#ef4444", 1: "#f59e0b", 0: "#475569"}
-COR_FUNDO = "#0f2540"
-COR_CARD = "#16335c"
-COR_AZUL = "#1e6fd0"
-COR_TEXTO_SUAVE = "#94a3b8"
+COR_PRIORIDADE = {2: "#ef4444", 1: "#f59e0b", 0: "#4b5563"}
+COR_FUNDO = "#121417"
+COR_CARD = "#1e2227"
+COR_ACENTO = "#10b981"
+COR_CHIP = "#10b9811f"  # verde translúcido dos chips de lista
+COR_TEXTO_SUAVE = "#9ca3af"
 COR_ATRASADA = "#f87171"

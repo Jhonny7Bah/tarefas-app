@@ -16,9 +16,10 @@ import flet as ft
 import db
 from atualizacao import buscar_ultima_release, parse_versao
 from constantes import (
+    COR_ACENTO,
     COR_ATRASADA,
-    COR_AZUL,
     COR_CARD,
+    COR_CHIP,
     COR_FUNDO,
     COR_PRIORIDADE,
     COR_TEXTO_SUAVE,
@@ -29,7 +30,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.1.3"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.2.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -45,7 +46,7 @@ def main(page: ft.Page):
     # pro botão de desfazer (id da tarefa e da ocorrência criada pelo repetir)
     ultima_concluida: dict[str, int | None] = {"id": None, "clone": None}
     filtro = {"lista": None, "modo": "pendentes"}  # lista None = Todas
-    fab = ft.FloatingActionButton(icon=ft.Icons.ADD, bgcolor=COR_AZUL)
+    fab = ft.FloatingActionButton(icon=ft.Icons.ADD, bgcolor=COR_ACENTO)
 
     subtitulo_appbar = ft.Text("Todas", size=12)
 
@@ -66,9 +67,17 @@ def main(page: ft.Page):
         linhas = db.listar_pendentes(filtro["lista"])
 
         if not linhas:
+            vazio: list[ft.Control] = [
+                ft.Icon(ft.Icons.TASK_ALT, size=48, color=COR_ACENTO),
+                ft.Text("Tudo em dia por aqui!", color=COR_TEXTO_SUAVE, size=16),
+            ]
             lista_tarefas.controls.append(
                 ft.Container(
-                    ft.Text("Nada a fazer 🌴", color=COR_TEXTO_SUAVE, size=16),
+                    ft.Column(
+                        vazio,
+                        spacing=12,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
                     alignment=ft.Alignment(0, 0),
                     padding=40,
                 )
@@ -96,8 +105,24 @@ def main(page: ft.Page):
                     )
         page.update()
 
+    def chips_listas(t):
+        """Chips das listas da tarefa, embaixo do título."""
+        return ft.Row(
+            [
+                ft.Container(
+                    ft.Text(nome, size=10, color=COR_ACENTO),
+                    bgcolor=COR_CHIP,
+                    border_radius=999,
+                    padding=ft.Padding(left=8, top=2, right=8, bottom=2),
+                )
+                for nome in db.rotulo_listas(t).split(" · ")
+            ],
+            spacing=6,
+            wrap=True,
+        )
+
     def criar_card(t, atrasada=False):
-        cor_prio = COR_PRIORIDADE.get(t["prioridade"], "#475569")
+        cor_prio = COR_PRIORIDADE.get(t["prioridade"], "#4b5563")
 
         def on_check(e, tid=t["id"]):
             if e.control.value:
@@ -108,12 +133,6 @@ def main(page: ft.Page):
             else:
                 db.marcar_concluida(tid, False)
             render_tarefas()
-
-        # Etiqueta da(s) lista(s) no canto, como no app de referência
-        etiqueta = ft.Container(
-            ft.Text(db.rotulo_listas(t), size=11, color=COR_TEXTO_SUAVE),
-            alignment=ft.Alignment(1, -1),
-        )
 
         linha_prazo = None
         if t["prazo"]:
@@ -138,27 +157,24 @@ def main(page: ft.Page):
                     color=COR_TEXTO_SUAVE,
                 )
             )
+        corpo.append(chips_listas(t))
 
         def on_tap(e, tid=t["id"]):
             abrir_editar(tid)
 
         linha_principal: list[ft.Control] = [
             ft.Checkbox(value=False, on_change=on_check, fill_color=cor_prio),
-            ft.Column(corpo, spacing=2, expand=True),
+            ft.Column(corpo, spacing=4, expand=True),
         ]
-        conteudo_card: list[ft.Control] = [
-            etiqueta,
-            ft.Row(
+        return ft.Container(
+            content=ft.Row(
                 linha_principal,
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.START,
             ),
-        ]
-        return ft.Container(
-            content=ft.Column(conteudo_card, spacing=0),
             bgcolor=COR_CARD,
-            border_radius=10,
-            padding=ft.Padding(left=12, top=4, right=12, bottom=10),
+            border_radius=16,
+            padding=ft.Padding(left=12, top=10, right=12, bottom=10),
             border=ft.Border(left=ft.BorderSide(width=4, color=cor_prio)),
             on_click=on_tap,
             ink=True,
@@ -169,7 +185,7 @@ def main(page: ft.Page):
     campo_busca = ft.TextField(
         label="Buscar tarefas",
         prefix_icon=ft.Icons.SEARCH,
-        border_color=COR_AZUL,
+        border_color=COR_ACENTO,
         autofocus=True,
     )
 
@@ -235,7 +251,7 @@ def main(page: ft.Page):
     # --- Tela de gerenciamento de listas ------------------------------------
     def render_listas():
         fab.visible = True
-        subtitulo_appbar.value = "Listas de tarefas"
+        subtitulo_appbar.value = "Gerenciar listas"
         lista_tarefas.controls.clear()
         totais = db.contar_por_lista_total()
         for lst in db.listar_listas():
@@ -285,7 +301,7 @@ def main(page: ft.Page):
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     bgcolor=COR_CARD,
-                    border_radius=10,
+                    border_radius=16,
                     padding=ft.Padding(left=16, top=10, right=8, bottom=10),
                 )
             )
@@ -356,7 +372,7 @@ def main(page: ft.Page):
             lista_tarefas.controls.append(
                 ft.Container(
                     ft.Text(
-                        "Nenhuma tarefa concluída ainda",
+                        "Nada concluído por enquanto",
                         color=COR_TEXTO_SUAVE,
                         size=16,
                     ),
@@ -392,12 +408,13 @@ def main(page: ft.Page):
         ]
         if t["descricao_conclusao"]:
             corpo.append(
-                ft.Text(t["descricao_conclusao"], size=13, color="#cbd5e1", italic=True)
+                ft.Text(t["descricao_conclusao"], size=13, color="#d1d5db", italic=True)
             )
+        corpo.append(chips_listas(t))
 
         linha_principal: list[ft.Control] = [
-            ft.Checkbox(value=True, on_change=on_uncheck, fill_color=COR_AZUL),
-            ft.Column(corpo, spacing=2, expand=True),
+            ft.Checkbox(value=True, on_change=on_uncheck, fill_color=COR_ACENTO),
+            ft.Column(corpo, spacing=4, expand=True),
             ft.IconButton(
                 icon=ft.Icons.EDIT_NOTE,
                 icon_color=COR_TEXTO_SUAVE,
@@ -411,22 +428,15 @@ def main(page: ft.Page):
                 on_click=ao_excluir,
             ),
         ]
-        conteudo_card: list[ft.Control] = [
-            ft.Container(
-                ft.Text(db.rotulo_listas(t), size=11, color=COR_TEXTO_SUAVE),
-                alignment=ft.Alignment(1, -1),
-            ),
-            ft.Row(
+        return ft.Container(
+            content=ft.Row(
                 linha_principal,
                 spacing=8,
                 vertical_alignment=ft.CrossAxisAlignment.START,
             ),
-        ]
-        return ft.Container(
-            content=ft.Column(conteudo_card, spacing=0),
             bgcolor=COR_CARD,
-            border_radius=10,
-            padding=ft.Padding(left=12, top=4, right=12, bottom=10),
+            border_radius=16,
+            padding=ft.Padding(left=12, top=10, right=12, bottom=10),
         )
 
     campo_descricao = ft.TextField(
@@ -481,7 +491,7 @@ def main(page: ft.Page):
                 return None
             return ft.Container(
                 ft.Text(str(n), size=11, color="white"),
-                bgcolor=COR_AZUL,
+                bgcolor=COR_ACENTO,
                 border_radius=20,
                 padding=ft.Padding(left=8, top=2, right=8, bottom=2),
             )
@@ -504,7 +514,7 @@ def main(page: ft.Page):
 
         itens = [
             ft.Container(
-                ft.Text("LISTAS DE TAREFAS", size=12, color=COR_TEXTO_SUAVE),
+                ft.Text("MINHAS LISTAS", size=12, color=COR_TEXTO_SUAVE),
                 padding=ft.Padding(left=16, top=16, right=16, bottom=4),
             ),
             ft.ListTile(
@@ -643,23 +653,23 @@ def main(page: ft.Page):
 
     # --- Edição e exclusão de tarefa ---------------------------------------
     campo_edit_titulo = ft.TextField(
-        label="O que há para fazer?", border_color=COR_AZUL
+        label="O que precisa ser feito?", border_color=COR_ACENTO
     )
     campo_edit_prazo = ft.TextField(
-        label="Notificação / prazo (opcional)",
+        label="Prazo (opcional)",
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
-        border_color=COR_AZUL,
+        border_color=COR_ACENTO,
     )
     selecao_listas_edit = ft.Column(spacing=0)
     dropdown_edit_prioridade = ft.Dropdown(
         label="Prioridade",
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
-        border_color=COR_AZUL,
+        border_color=COR_ACENTO,
     )
     dropdown_edit_repetir = ft.Dropdown(
         label="Repetir",
         options=[ft.dropdown.Option(r) for r in REPETICOES],
-        border_color=COR_AZUL,
+        border_color=COR_ACENTO,
     )
 
     texto_detalhes = ft.Text("", size=12, color=COR_TEXTO_SUAVE)
@@ -679,7 +689,7 @@ def main(page: ft.Page):
     )
     subtarefas_coluna = ft.Column(spacing=0)
     campo_nova_subtarefa = ft.TextField(
-        label="Nova subtarefa", border_color=COR_AZUL, expand=True
+        label="Nova subtarefa", border_color=COR_ACENTO, expand=True
     )
 
     def montar_subtarefas():
@@ -752,7 +762,7 @@ def main(page: ft.Page):
             campo_nova_subtarefa,
             ft.IconButton(
                 icon=ft.Icons.ADD_CIRCLE_OUTLINE,
-                icon_color=COR_AZUL,
+                icon_color=COR_ACENTO,
                 on_click=add_subtarefa,
             ),
         ],
@@ -860,11 +870,11 @@ def main(page: ft.Page):
 
     # --- Tela de adicionar tarefa (bottom sheet) ---------------------------
     campo_titulo = ft.TextField(
-        label="O que há para fazer?",
+        label="O que precisa ser feito?",
         autofocus=True,
-        border_color=COR_AZUL,
+        border_color=COR_ACENTO,
     )
-    switch_lote = ft.Switch(label="Adicionar em lote", value=False)
+    switch_lote = ft.Switch(label="Criar várias de uma vez", value=False)
 
     def alternar_lote(e):
         campo_titulo.multiline = switch_lote.value
@@ -875,22 +885,22 @@ def main(page: ft.Page):
     switch_lote.on_change = alternar_lote
 
     campo_prazo = ft.TextField(
-        label="Notificação / prazo (opcional)",
+        label="Prazo (opcional)",
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
-        border_color=COR_AZUL,
+        border_color=COR_ACENTO,
     )
     selecao_listas_add = ft.Column(spacing=0)
     dropdown_prioridade = ft.Dropdown(
         label="Prioridade",
         value="Média",
         options=[ft.dropdown.Option(p) for p in PRIORIDADES],
-        border_color=COR_AZUL,
+        border_color=COR_ACENTO,
     )
     dropdown_repetir = ft.Dropdown(
         label="Repetir",
         value="Não repete",
         options=[ft.dropdown.Option(r) for r in REPETICOES],
-        border_color=COR_AZUL,
+        border_color=COR_ACENTO,
     )
 
     def salvar(e):
@@ -948,7 +958,7 @@ def main(page: ft.Page):
             switch_oculta.value = False
             page.show_dialog(dialogo_nova_lista)
             return
-        # Pré-seleciona a lista do filtro atual, como no app de referência
+        # Pré-seleciona a lista do filtro atual
         montar_selecao_listas(selecao_listas_add, {filtro["lista"] or "Padrão"})
         page.show_dialog(folha_adicionar)
 
@@ -960,10 +970,10 @@ def main(page: ft.Page):
         title=ft.Column(
             [ft.Text("Tarefas", size=18, weight=ft.FontWeight.BOLD), subtitulo_appbar],
             spacing=0,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
         ),
-        center_title=True,
-        bgcolor=COR_AZUL,
+        center_title=False,
+        bgcolor=COR_ACENTO,
         color="white",
         actions=[
             ft.IconButton(

@@ -2,8 +2,9 @@
 
 App Android de gerenciamento de tarefas escrito em **Python + Flet** (o Flet
 renderiza com Flutter por baixo, então o visual é Material Design nativo).
-A especificação vem do documento "Ideia de App Tarefa" do usuário, inspirado
-no app de referência (Mi Notes/Tarefas, tema azul-marinho escuro).
+A especificação vem do documento "Ideia de App Tarefa" do usuário.
+Identidade visual própria desde a v1.2.0: grafite + verde-esmeralda, cards
+de cantos arredondados com chips de lista e borda de prioridade.
 
 ## Decisões do projeto
 
