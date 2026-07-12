@@ -82,7 +82,9 @@ def main(page: ft.Page):
                 cor_titulo = COR_ATRASADA if nome == "Atrasada" else COR_TEXTO_SUAVE
                 lista_tarefas.controls.append(
                     ft.Container(
-                        ft.Text(nome, color=cor_titulo, size=13, weight=ft.FontWeight.BOLD),
+                        ft.Text(
+                            nome, color=cor_titulo, size=13, weight=ft.FontWeight.BOLD
+                        ),
                         padding=ft.Padding(left=4, top=8, right=0, bottom=0),
                     )
                 )
@@ -439,7 +441,9 @@ def main(page: ft.Page):
     )
 
     def salvar_descricao(e):
-        db.salvar_descricao_conclusao(dialogo_descricao.data, campo_descricao.value or "")
+        db.salvar_descricao_conclusao(
+            dialogo_descricao.data, campo_descricao.value or ""
+        )
         page.pop_dialog()
         render_tarefas()
 
@@ -640,7 +644,9 @@ def main(page: ft.Page):
     )
 
     # --- Edição e exclusão de tarefa ---------------------------------------
-    campo_edit_titulo = ft.TextField(label="O que há para fazer?", border_color=COR_AZUL)
+    campo_edit_titulo = ft.TextField(
+        label="O que há para fazer?", border_color=COR_AZUL
+    )
     campo_edit_prazo = ft.TextField(
         label="Notificação / prazo (opcional)",
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
@@ -781,9 +787,9 @@ def main(page: ft.Page):
             folha_editar.data,
             titulo,
             listas_marcadas(selecao_listas_edit),
-            PRIORIDADES[dropdown_edit_prioridade.value],
+            PRIORIDADES[dropdown_edit_prioridade.value or "Média"],
             db.parse_prazo(campo_edit_prazo.value or ""),
-            REPETICOES[dropdown_edit_repetir.value],
+            REPETICOES[dropdown_edit_repetir.value or "Não repete"],
         )
         page.pop_dialog()
         render_tarefas()
@@ -801,7 +807,10 @@ def main(page: ft.Page):
                     campo_edit_titulo,
                     campo_edit_prazo,
                     ft.Text(
-                        "Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE
+                        "Listas",
+                        size=14,
+                        weight=ft.FontWeight.BOLD,
+                        color=COR_TEXTO_SUAVE,
                     ),
                     selecao_listas_edit,
                     dropdown_edit_prioridade,
@@ -891,13 +900,13 @@ def main(page: ft.Page):
         if not texto:
             return
         prazo = db.parse_prazo(campo_prazo.value or "")
-        prioridade = PRIORIDADES[dropdown_prioridade.value]
+        prioridade = PRIORIDADES[dropdown_prioridade.value or "Média"]
         # Em lote: uma tarefa por linha; senão, uma só
         if switch_lote.value:
             titulos = [t.strip() for t in texto.split("\n") if t.strip()]
         else:
             titulos = [texto]
-        repetir = REPETICOES[dropdown_repetir.value]
+        repetir = REPETICOES[dropdown_repetir.value or "Não repete"]
         listas = listas_marcadas(selecao_listas_add) or ["Padrão"]
         for titulo in titulos:
             db.adicionar_tarefa(titulo, listas, prioridade, prazo, repetir)
@@ -915,7 +924,10 @@ def main(page: ft.Page):
                     switch_lote,
                     campo_prazo,
                     ft.Text(
-                        "Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE
+                        "Listas",
+                        size=14,
+                        weight=ft.FontWeight.BOLD,
+                        color=COR_TEXTO_SUAVE,
                     ),
                     selecao_listas_add,
                     dropdown_prioridade,
@@ -956,7 +968,9 @@ def main(page: ft.Page):
         bgcolor=COR_AZUL,
         color="white",
         actions=[
-            ft.IconButton(icon=ft.Icons.SEARCH, icon_color="white", on_click=alternar_busca)
+            ft.IconButton(
+                icon=ft.Icons.SEARCH, icon_color="white", on_click=alternar_busca
+            )
         ],
     )
     page.floating_action_button = ft.FloatingActionButton(

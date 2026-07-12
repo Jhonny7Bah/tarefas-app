@@ -70,12 +70,16 @@ A interface é intencionalmente um módulo só: as telas são closures
 interligadas; quebrar em `ui/` só quando houver como testar GUI (fazer
 junto com as notificações, se valer a pena).
 
-**Estilo: PEP 8, verificado com ruff** (config no pyproject: linha até 99,
-regras E/W/F/I/N). Rodar antes de commitar:
+**Estilo: PEP 8 com 88 colunas** (mesmo limite do Flake8 do editor do
+usuário; config do ruff no pyproject, regras E/W/F/I/N). O código é
+formatado com `ruff format`. Rodar antes de commitar:
 
 ```bash
-.venv/bin/ruff check .
+.venv/bin/ruff format . && .venv/bin/ruff check .
 ```
+
+Evitar padrões que o Pylance (modo basic) marca: não indexar dicionário
+com `dropdown.value` direto (é `str | None`) — usar `valor or "padrão"`.
 
 ## Como testar
 

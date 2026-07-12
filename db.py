@@ -52,7 +52,9 @@ def init_db():
     # Migração: colunas novas em bancos criados por versões anteriores
     existentes = {r[1] for r in con.execute("PRAGMA table_info(tarefas)")}
     if "prioridade" not in existentes:
-        con.execute("ALTER TABLE tarefas ADD COLUMN prioridade INTEGER NOT NULL DEFAULT 1")
+        con.execute(
+            "ALTER TABLE tarefas ADD COLUMN prioridade INTEGER NOT NULL DEFAULT 1"
+        )
     if "prazo" not in existentes:
         con.execute("ALTER TABLE tarefas ADD COLUMN prazo TEXT")
     if "concluida_em" not in existentes:
@@ -195,7 +197,9 @@ def contar_por_lista_total():
     """Total de tarefas (pendentes + concluídas) por lista, pro gerenciamento."""
     con = sqlite3.connect(DB)
     linhas = dict(
-        con.execute("SELECT lista, COUNT(*) FROM tarefa_listas GROUP BY lista").fetchall()
+        con.execute(
+            "SELECT lista, COUNT(*) FROM tarefa_listas GROUP BY lista"
+        ).fetchall()
     )
     con.close()
     return linhas

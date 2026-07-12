@@ -13,9 +13,9 @@ org = "dev.jhon7bah"
 product = "Tarefas"
 company = "jhon7bah"
 
-# PEP 8 verificado com ruff (linha até 99, permitido pelo próprio PEP 8)
+# PEP 8 verificado com ruff; 88 colunas, o mesmo limite do Flake8 do editor
 [tool.ruff]
-line-length = 99
+line-length = 88
 target-version = "py312"
 
 [tool.ruff.lint]
