@@ -103,10 +103,14 @@ com `dropdown.value` direto (é `str | None`) — usar `valor or "padrão"`.
 
 ## Como testar
 
-Sem framework de teste por enquanto. O padrão usado: script Python no
-scratchpad que importa as funções de dados do `main.py` (removendo o
-`ft.run(main)`), cria um banco temporário, simula o schema antigo pra validar
-a migração e asserta a lógica. Nunca testar contra o `tarefas.db` do projeto.
+**Regra de ouro (combinada com o usuário): validar TUDO no desktop antes de
+soltar release** — `flet run --ignore-dirs storage main.py`, UMA janela por
+vez (várias instâncias no mesmo banco geram comportamento fantasma). O ciclo
+local é instantâneo; o de release custa ~5 min de build por tentativa.
+
+Pra lógica: script Python no scratchpad que importa o módulo `db`, cria um
+banco temporário, simula o schema antigo pra validar a migração e asserta as
+regras. Nunca testar contra o banco do projeto.
 
 ## Ferramentas instaladas pro build do APK (jul/2026)
 
