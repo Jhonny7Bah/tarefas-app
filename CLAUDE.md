@@ -42,8 +42,10 @@ A doc/exemplos online usam a API antiga, que **quebra** nessa versão:
 
 - `BottomSheet`, `SnackBar` e `AlertDialog` são `DialogControl` → usar
   `show_dialog`/`pop_dialog`.
-- `page.show_drawer()`/`page.close_drawer()` são **async** → handlers `async def`
-  com `await`.
+- `page.show_drawer()`/`page.close_drawer()` e `page.launch_url()` são
+  **async** → handlers `async def` com `await`. CUIDADO: `inspect.
+  iscoroutinefunction` mente pro `launch_url` (decorator de deprecação
+  mascara) — sem await ele silenciosamente não faz nada.
 - Antes de usar componente novo, validar construção com `.venv/bin/python`.
 
 ## Arquitetura
