@@ -30,7 +30,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.3.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.3.1"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -43,6 +43,16 @@ def main(page: ft.Page):
     page.padding = 0
 
     lista_tarefas = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
+    # Troca animada entre a lista e a tela de nova tarefa (nada de corte seco)
+    area_conteudo = ft.AnimatedSwitcher(
+        content=lista_tarefas,
+        transition=ft.AnimatedSwitcherTransition.FADE,
+        duration=300,
+        reverse_duration=300,
+        switch_in_curve=ft.AnimationCurve.EASE_OUT,
+        switch_out_curve=ft.AnimationCurve.EASE_IN,
+        expand=True,
+    )
     # pro botão de desfazer (id da tarefa e da ocorrência criada pelo repetir)
     ultima_concluida: dict[str, int | None] = {"id": None, "clone": None}
     filtro = {"lista": None, "modo": "pendentes"}  # lista None = Todas
@@ -68,9 +78,10 @@ def main(page: ft.Page):
 
     # --- Render ----------------------------------------------------------
     def render_tarefas():
-        # barra padrão; o modo "nova" troca pela versão dele logo em seguida
+        # barra e conteúdo padrão; o modo "nova" troca pelos dele em seguida
         appbar.leading = botao_menu
         botao_busca.visible = True
+        area_conteudo.content = lista_tarefas
         if filtro["modo"] == "nova":
             render_nova_tarefa()
             return
@@ -891,9 +902,9 @@ def main(page: ft.Page):
     )
 
     # --- Tela de adicionar tarefa (página inteira) --------------------------
+    # Sem autofocus: o teclado só sobe quando a pessoa tocar no campo
     campo_titulo = ft.TextField(
         label="O que precisa ser feito?",
-        autofocus=True,
         border_color=COR_ACENTO,
     )
     switch_lote = ft.Switch(label="Criar várias de uma vez", value=False)
@@ -947,8 +958,11 @@ def main(page: ft.Page):
         filtro["modo"] = "pendentes"
         render_tarefas()
 
-    # A tela de nova tarefa ocupa a página inteira (nada de meia tela)
+    # A tela de nova tarefa ocupa a página inteira (nada de meia tela).
+    # O respiro no topo evita a label flutuante ser cortada quando o teclado
+    # sobe ou quando o campo vira multilinha no modo "criar várias"
     form_nova_tarefa: list[ft.Control] = [
+        ft.Container(height=16),
         campo_titulo,
         switch_lote,
         campo_prazo,
@@ -971,13 +985,16 @@ def main(page: ft.Page):
         ),
     ]
 
+    vista_nova_tarefa = ft.Column(
+        form_nova_tarefa, spacing=14, scroll=ft.ScrollMode.AUTO, expand=True
+    )
+
     def render_nova_tarefa():
         fab.visible = False
         appbar.leading = botao_voltar
         botao_busca.visible = False
         subtitulo_appbar.value = "Nova tarefa"
-        lista_tarefas.controls.clear()
-        lista_tarefas.controls.extend(form_nova_tarefa)
+        area_conteudo.content = vista_nova_tarefa
         page.update()
 
     def abrir_adicionar(e):
@@ -1007,7 +1024,7 @@ def main(page: ft.Page):
     page.appbar = appbar
     fab.on_click = abrir_adicionar
     page.floating_action_button = fab
-    page.add(ft.Container(lista_tarefas, padding=12, expand=True))
+    page.add(ft.Container(area_conteudo, padding=12, expand=True))
 
     render_tarefas()
 
