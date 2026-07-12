@@ -33,7 +33,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.6.3"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.6.4"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -1104,6 +1104,7 @@ def main(page: ft.Page):
         spacing=14,
         scroll=ft.ScrollMode.AUTO,
         expand=True,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
 
     def render_editar_tarefa():
@@ -1246,7 +1247,11 @@ def main(page: ft.Page):
     ]
 
     vista_nova_tarefa = ft.Column(
-        form_nova_tarefa, spacing=14, scroll=ft.ScrollMode.AUTO, expand=True
+        form_nova_tarefa,
+        spacing=14,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
 
     def render_nova_tarefa():
