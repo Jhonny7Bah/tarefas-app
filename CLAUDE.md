@@ -159,6 +159,10 @@ a atualização por cima.
       `flet build apk --split-per-abi`, instalar o tarefas-arm64-v8a.apk)
 - [x] Botão "verificar atualização" — ciclo completo validado em 12/07/2026
       (v1.1.2→v1.1.3 instalada pelo próprio app, dados preservados)
+- [x] Identidade visual própria (v1.2.0, instalada e aprovada pelo usuário
+      em 12/07/2026): paleta grafite + verde-esmeralda, textos com voz
+      própria, cards com chips de lista, AppBar à esquerda, ícone novo.
+      Usabilidade intacta. Cores centralizadas em constantes.py
 - [ ] Notificações Android (plugin nativo + rebuild) — ADIADO a pedido do
       usuário; é o único item restante do documento original
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
