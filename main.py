@@ -32,7 +32,7 @@ from constantes import (
     REPETICOES,
 )
 
-VERSAO = "1.6.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.6.1"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -639,11 +639,20 @@ def main(page: ft.Page):
                 padding=ft.Padding(left=16, top=4, right=16, bottom=12),
             ),
         ]
-        return ft.NavigationDrawer(controls=itens, bgcolor=COR_FUNDO)
+        return ft.NavigationDrawer(
+            controls=itens, bgcolor=COR_FUNDO, on_dismiss=ao_fechar_gaveta
+        )
+
+    # Rastreio manual: o NavigationDrawer não expõe se está aberto
+    gaveta_aberta = {"valor": False}
+
+    def ao_fechar_gaveta(e):
+        gaveta_aberta["valor"] = False
 
     async def abrir_gaveta(e):
         page.drawer = construir_drawer()  # reconstrói pra atualizar contadores
         await page.show_drawer()
+        gaveta_aberta["valor"] = True
 
     # --- Verificar atualização ------------------------------------------------
     async def verificar_atualizacao(e):
@@ -1152,7 +1161,10 @@ def main(page: ft.Page):
     # --- Botão voltar do Android --------------------------------------------
     async def ao_tentar_voltar(e):
         """Back do sistema: volta uma tela; na raiz, confirma antes de sair."""
-        if filtro["modo"] in ("nova", "editar"):
+        if gaveta_aberta["valor"]:
+            gaveta_aberta["valor"] = False
+            await page.close_drawer()
+        elif filtro["modo"] in ("nova", "editar"):
             voltar_para_lista()
         elif filtro["modo"] != "pendentes":
             filtro["modo"] = "pendentes"
