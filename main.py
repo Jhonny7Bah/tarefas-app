@@ -18,11 +18,22 @@ Empacotar Android:  flet build apk
 
 from datetime import datetime, date, timedelta
 
+import asyncio
 import calendar
+import json
+import os
 import sqlite3
+import urllib.request
+
 import flet as ft
 
-DB = "tarefas.db"
+VERSAO = "1.1.0"  # manter em sincronia com [project] version no pyproject.toml
+REPO_ATUALIZACAO = "Jhonny7Bah/tarefas-app"
+
+# No Android, FLET_APP_STORAGE_DATA aponta pro diretório de dados persistente
+# do app — sobrevive a atualizações. No desktop a variável não existe e o
+# banco fica na pasta atual, como sempre.
+DB = os.path.join(os.getenv("FLET_APP_STORAGE_DATA") or ".", "tarefas.db")
 
 LISTAS_INICIAIS = ["Padrão", "Financeiro", "Pessoal", "Compras", "Trabalho", "Tech"]
 
@@ -537,6 +548,33 @@ def formatar_prazo(iso):
 
 
 # ---------------------------------------------------------------------------
+# Verificação de atualização (releases do GitHub)
+# ---------------------------------------------------------------------------
+def parse_versao(v):
+    """'v1.2.3' -> (1, 2, 3); qualquer coisa inválida -> (0,)."""
+    try:
+        return tuple(int(x) for x in v.strip().lstrip("v").split("."))
+    except (ValueError, AttributeError):
+        return (0,)
+
+
+def buscar_ultima_release():
+    """Última release do repositório: tag, notas e link de download do APK."""
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{REPO_ATUALIZACAO}/releases/latest",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "tarefas-app"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        dados = json.load(resp)
+    url = dados.get("html_url")  # página da release, caso não ache o APK
+    for asset in dados.get("assets", []):
+        if "arm64" in asset.get("name", ""):
+            url = asset["browser_download_url"]
+            break
+    return {"tag": dados.get("tag_name", ""), "notas": dados.get("body") or "", "url": url}
+
+
+# ---------------------------------------------------------------------------
 # Interface
 # ---------------------------------------------------------------------------
 def main(page: ft.Page):
@@ -1016,12 +1054,63 @@ def main(page: ft.Page):
                 title=ft.Text("Gerenciar listas"),
                 on_click=ir_listas,
             ),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.SYSTEM_UPDATE_ALT),
+                title=ft.Text("Verificar atualização"),
+                on_click=verificar_atualizacao,
+            ),
+            ft.Container(
+                ft.Text(f"Tarefas v{VERSAO}", size=11, color=COR_TEXTO_SUAVE),
+                padding=ft.Padding(left=16, top=8, right=16, bottom=8),
+            ),
         ]
         return ft.NavigationDrawer(controls=itens, bgcolor=COR_FUNDO)
 
     async def abrir_gaveta(e):
         page.drawer = construir_drawer()  # reconstrói pra atualizar contadores
         await page.show_drawer()
+
+    # --- Verificar atualização ---------------------------------------------
+    async def verificar_atualizacao(e):
+        await page.close_drawer()
+        page.show_dialog(ft.SnackBar(content=ft.Text("Verificando atualização…")))
+        try:
+            rel = await asyncio.to_thread(buscar_ultima_release)
+        except Exception:
+            page.show_dialog(
+                ft.SnackBar(content=ft.Text("Não deu pra verificar — sem internet?"))
+            )
+            return
+
+        if parse_versao(rel["tag"]) > parse_versao(VERSAO):
+            notas = rel["notas"].strip()
+            if len(notas) > 500:
+                notas = notas[:500] + "…"
+            conteudo = [ft.Text(f"Instalada: v{VERSAO}   →   Nova: {rel['tag']}")]
+            if notas:
+                conteudo.append(ft.Text(notas, size=12, color=COR_TEXTO_SUAVE))
+
+            def baixar(ev, url=rel["url"]):
+                page.launch_url(url)
+                page.pop_dialog()
+
+            page.show_dialog(
+                ft.AlertDialog(
+                    title=ft.Text("Atualização disponível!"),
+                    content=ft.Column(
+                        conteudo, tight=True, spacing=10, scroll=ft.ScrollMode.AUTO
+                    ),
+                    actions=[
+                        ft.TextButton("Depois", on_click=lambda ev: page.pop_dialog()),
+                        ft.FilledButton("Baixar", icon=ft.Icons.DOWNLOAD, on_click=baixar),
+                    ],
+                    bgcolor=COR_FUNDO,
+                )
+            )
+        else:
+            page.show_dialog(
+                ft.SnackBar(content=ft.Text(f"Você já está na última versão (v{VERSAO})"))
+            )
 
     # --- Diálogo de nova lista --------------------------------------------
     campo_nome_lista = ft.TextField(label="Nome da lista", autofocus=True)
