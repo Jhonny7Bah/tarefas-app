@@ -93,6 +93,28 @@ Caches e diretórios que essas ferramentas criam por fora (apagar manualmente):
 - `~/.dart/` e `~/.flutter` — configs do Flutter
 - `build/` dentro deste projeto — saída do flet build (já está no .gitignore)
 
+## Como lançar uma versão nova
+
+O app tem o botão "Verificar atualização" (gaveta), que consulta a última
+release de https://github.com/Jhonny7Bah/tarefas-app e compara com a
+constante `VERSAO` do main.py.
+
+Checklist de release (a ordem importa):
+
+1. Bumpar a versão nos **dois** lugares: `VERSAO` no `main.py` e
+   `[project] version` no `pyproject.toml` (tem teste pra isso).
+2. Commit + push.
+3. `flet build apk --split-per-abi`
+4. `gh release create v<versão> build/apk/tarefas-arm64-v8a.apk
+   --title "v<versão>" --notes "<o que mudou>"`
+   — o asset PRECISA ter "arm64" no nome (o botão procura por isso).
+5. No celular: gaveta → Verificar atualização → Baixar → instalar por cima.
+
+O banco fica em `FLET_APP_STORAGE_DATA` (persistente), então atualizar não
+apaga as tarefas. NUNCA trocar o pacote (`dev.jhon7bah.tarefas`) nem buildar
+em outra máquina sem migrar a chave de assinatura — senão o Android recusa
+a atualização por cima.
+
 ## Roadmap (do documento do usuário)
 
 - [x] Grupos por data, prioridade, prazo, timestamps, lote, desfazer
