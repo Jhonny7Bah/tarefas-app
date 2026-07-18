@@ -28,6 +28,14 @@ flet run --ignore-dirs storage main.py   # janela nativa (SEMPRE com a flag!)
 flet run --web main.py                   # navegador
 flet build apk --split-per-abi  # APKs Android (o flet baixa o próprio Flutter;
                                 #  precisa de ANDROID_HOME=/opt/android-sdk e JDK 17)
+CFLAGS="-Wno-macro-redefined" CXXFLAGS="-Wno-macro-redefined" flet build linux
+    # Executável desktop (build/linux/tarefas; dados em
+    # ~/.local/share/dev.jhon7bah.tarefas). As flags são OBRIGATÓRIAS: o
+    # runner do Flutter compila com -Werror e os headers do Python do
+    # serious_python redefinem _POSIX_C_SOURCE/_XOPEN_SOURCE (clang novo
+    # promove a erro). Precisa de clang, cmake e ninja. Pra forçar rebuild
+    # do zero, apagar build/flutter E build/.hash juntos (o .hash é o cache
+    # de etapas; sem apagar os dois o flet se perde)
 ./release.sh "o que mudou"      # build + release no GitHub num comando
 ```
 
@@ -119,6 +127,8 @@ Instaladas só pra gerar o APK — anotado pra desinstalar no futuro se quiser:
 ```bash
 # Pacotes (AUR, via yay):
 yay -Rns jdk17-openjdk android-sdk-cmdline-tools-latest android-sdk-platform-tools
+# Toolchain do flet build linux (repo oficial, instalada em 18/07/2026):
+sudo pacman -Rns clang cmake ninja
 ```
 
 O `flutter-bin` do AUR foi instalado e **removido logo em seguida** (jul/2026):

@@ -38,7 +38,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.6.6"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.7.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
