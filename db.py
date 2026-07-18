@@ -10,6 +10,7 @@ import json
 import os
 import sqlite3
 from datetime import date, datetime, timedelta
+from uuid import uuid4
 
 from constantes import LISTAS_INICIAIS, MAX_SUBTAREFAS
 
@@ -28,6 +29,33 @@ _AGG_LISTAS = (
 
 # Quantos dias antes do prazo a próxima ocorrência de uma recorrente aparece
 ANTECEDENCIA_REPETICAO = timedelta(days=1)
+
+# Carimbo de modificação usado pelo sync (mesmo formato dos demais campos)
+_AGORA = "datetime('now','localtime')"
+
+
+def _novo_uuid():
+    return str(uuid4())
+
+
+def _carimbar_tarefa(con, tid):
+    """Marca a tarefa como modificada agora e pendente de envio.
+
+    Mexer em subtarefa ou vínculo de lista também carimba a tarefa-mãe:
+    no sync a tarefa viaja como documento completo (com subtarefas e
+    listas dentro), e o "último que mexeu leva" vale pro documento inteiro.
+    """
+    con.execute(
+        f"UPDATE tarefas SET modificado_em = {_AGORA}, sync_pendente = 1 WHERE id = ?",
+        (tid,),
+    )
+
+
+def _carimbar_lista(con, lid):
+    con.execute(
+        f"UPDATE listas SET modificado_em = {_AGORA}, sync_pendente = 1 WHERE id = ?",
+        (lid,),
+    )
 
 
 def init_db():
@@ -68,6 +96,37 @@ def init_db():
         con.execute("ALTER TABLE tarefas ADD COLUMN repetir TEXT")
     if "aparece_em" not in existentes:
         con.execute("ALTER TABLE tarefas ADD COLUMN aparece_em TEXT")
+    # Fundação do sync: identidade universal, carimbo de modificação e
+    # flag de pendência de envio (tudo começa pendente: banco pré-sync
+    # ainda não existe no servidor)
+    if "uuid" not in existentes:
+        con.execute("ALTER TABLE tarefas ADD COLUMN uuid TEXT")
+    if "modificado_em" not in existentes:
+        con.execute("ALTER TABLE tarefas ADD COLUMN modificado_em TEXT")
+    if "sync_pendente" not in existentes:
+        con.execute(
+            "ALTER TABLE tarefas ADD COLUMN sync_pendente INTEGER NOT NULL DEFAULT 1"
+        )
+    existentes_listas = {r[1] for r in con.execute("PRAGMA table_info(listas)")}
+    if "uuid" not in existentes_listas:
+        con.execute("ALTER TABLE listas ADD COLUMN uuid TEXT")
+    if "modificado_em" not in existentes_listas:
+        con.execute("ALTER TABLE listas ADD COLUMN modificado_em TEXT")
+    if "sync_pendente" not in existentes_listas:
+        con.execute(
+            "ALTER TABLE listas ADD COLUMN sync_pendente INTEGER NOT NULL DEFAULT 1"
+        )
+    # Lápides: exclusões também sincronizam (senão o outro aparelho devolve
+    # a tarefa apagada achando que é novidade)
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exclusoes (
+            uuid        TEXT PRIMARY KEY,
+            tipo        TEXT NOT NULL,
+            excluido_em TEXT NOT NULL
+        )
+        """
+    )
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS subtarefas (
@@ -101,6 +160,26 @@ def init_db():
         "INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista)"
         " SELECT id, categoria FROM tarefas"
     )
+    # Backfill do sync: linha sem uuid ganha um; sem carimbo, herda a data
+    # mais recente que tiver (ou agora, no caso das listas)
+    for tabela in ("tarefas", "listas"):
+        pendentes = con.execute(
+            f"SELECT id FROM {tabela} WHERE uuid IS NULL"  # noqa: S608
+        ).fetchall()
+        for (rid,) in pendentes:
+            con.execute(
+                f"UPDATE {tabela} SET uuid = ? WHERE id = ?",  # noqa: S608
+                (_novo_uuid(), rid),
+            )
+    con.execute(
+        "UPDATE tarefas SET modificado_em = COALESCE(modificado_em,"
+        " concluida_em, criada_em) WHERE modificado_em IS NULL"
+    )
+    con.execute(
+        f"UPDATE listas SET modificado_em = {_AGORA} WHERE modificado_em IS NULL"
+    )
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tarefas_uuid ON tarefas(uuid)")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_listas_uuid ON listas(uuid)")
     con.commit()
     con.close()
 
@@ -124,8 +203,9 @@ def listar_listas():
 def criar_lista(nome, oculta=False):
     con = sqlite3.connect(DB)
     con.execute(
-        "INSERT OR IGNORE INTO listas (nome, oculta) VALUES (?, ?)",
-        (nome, 1 if oculta else 0),
+        f"INSERT OR IGNORE INTO listas (nome, oculta, uuid, modificado_em,"
+        f" sync_pendente) VALUES (?, ?, ?, {_AGORA}, 1)",
+        (nome, 1 if oculta else 0, _novo_uuid()),
     )
     con.commit()
     con.close()
@@ -170,6 +250,13 @@ def renomear_lista(lid, novo_nome, oculta):
         )
         # se alguma tarefa já estava nas duas listas, remove a duplicada antiga
         con.execute("DELETE FROM tarefa_listas WHERE lista = ?", (antigo[0],))
+        # sync: a lista mudou, e toda tarefa dela carrega o nome no documento
+        _carimbar_lista(con, lid)
+        con.execute(
+            f"UPDATE tarefas SET modificado_em = {_AGORA}, sync_pendente = 1"
+            " WHERE id IN (SELECT tarefa_id FROM tarefa_listas WHERE lista = ?)",
+            (novo_nome,),
+        )
         con.commit()
     con.close()
 
@@ -177,8 +264,21 @@ def renomear_lista(lid, novo_nome, oculta):
 def excluir_lista(lid):
     """Apaga a lista; tarefa que ficaria sem lista vai pra 'Padrão'."""
     con = sqlite3.connect(DB)
-    nome = con.execute("SELECT nome FROM listas WHERE id = ?", (lid,)).fetchone()
-    if nome and nome[0] != "Padrão":
+    linha = con.execute("SELECT nome, uuid FROM listas WHERE id = ?", (lid,)).fetchone()
+    if linha and linha[0] != "Padrão":
+        nome = (linha[0],)
+        # sync: lápide da lista e carimbo em toda tarefa que a referenciava
+        if linha[1]:
+            con.execute(
+                f"INSERT OR REPLACE INTO exclusoes (uuid, tipo, excluido_em)"
+                f" VALUES (?, 'lista', {_AGORA})",
+                (linha[1],),
+            )
+        con.execute(
+            f"UPDATE tarefas SET modificado_em = {_AGORA}, sync_pendente = 1"
+            " WHERE id IN (SELECT tarefa_id FROM tarefa_listas WHERE lista = ?)",
+            (nome[0],),
+        )
         con.execute("DELETE FROM tarefa_listas WHERE lista = ?", (nome[0],))
         # órfãs (não estão em mais nenhuma lista) vão pra Padrão
         con.execute(
@@ -285,7 +385,8 @@ def listar_concluidas(lista=None):
 def salvar_descricao_conclusao(tid, texto):
     con = sqlite3.connect(DB)
     con.execute(
-        "UPDATE tarefas SET descricao_conclusao = ? WHERE id = ?",
+        f"UPDATE tarefas SET descricao_conclusao = ?, modificado_em = {_AGORA},"
+        " sync_pendente = 1 WHERE id = ?",
         (texto.strip() or None, tid),
     )
     con.commit()
@@ -331,9 +432,9 @@ def adicionar_tarefa(titulo, listas, prioridade=1, prazo=None, repetir=None):
     listas = listas or ["Padrão"]
     con = sqlite3.connect(DB)
     cur = con.execute(
-        "INSERT INTO tarefas (titulo, categoria, prioridade, prazo, repetir)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (titulo, listas[0], prioridade, prazo, repetir),
+        f"INSERT INTO tarefas (titulo, categoria, prioridade, prazo, repetir,"
+        f" uuid, modificado_em, sync_pendente) VALUES (?, ?, ?, ?, ?, ?, {_AGORA}, 1)",
+        (titulo, listas[0], prioridade, prazo, repetir, _novo_uuid()),
     )
     _definir_listas(con, cur.lastrowid, listas)
     con.commit()
@@ -346,8 +447,8 @@ def atualizar_tarefa(tid, titulo, listas, prioridade, prazo, repetir=None):
     listas = listas or ["Padrão"]
     con = sqlite3.connect(DB)
     con.execute(
-        "UPDATE tarefas SET titulo = ?, prioridade = ?, prazo = ?, repetir = ?"
-        " WHERE id = ?",
+        f"UPDATE tarefas SET titulo = ?, prioridade = ?, prazo = ?, repetir = ?,"
+        f" modificado_em = {_AGORA}, sync_pendente = 1 WHERE id = ?",
         (titulo, prioridade, prazo, repetir, tid),
     )
     _definir_listas(con, tid, listas)
@@ -357,6 +458,13 @@ def atualizar_tarefa(tid, titulo, listas, prioridade, prazo, repetir=None):
 
 def excluir_tarefa(tid):
     con = sqlite3.connect(DB)
+    uid = con.execute("SELECT uuid FROM tarefas WHERE id = ?", (tid,)).fetchone()
+    if uid and uid[0]:
+        con.execute(
+            f"INSERT OR REPLACE INTO exclusoes (uuid, tipo, excluido_em)"
+            f" VALUES (?, 'tarefa', {_AGORA})",
+            (uid[0],),
+        )
     con.execute("DELETE FROM subtarefas WHERE tarefa_id = ?", (tid,))
     con.execute("DELETE FROM tarefa_listas WHERE tarefa_id = ?", (tid,))
     con.execute("DELETE FROM tarefas WHERE id = ?", (tid,))
@@ -386,6 +494,7 @@ def adicionar_subtarefa(tarefa_id, titulo):
     con.execute(
         "INSERT INTO subtarefas (tarefa_id, titulo) VALUES (?, ?)", (tarefa_id, titulo)
     )
+    _carimbar_tarefa(con, tarefa_id)
     con.commit()
     con.close()
     return True
@@ -404,13 +513,23 @@ def marcar_subtarefa(sid, valor):
             "UPDATE subtarefas SET concluida = 0, concluida_em = NULL WHERE id = ?",
             (sid,),
         )
+    dona = con.execute(
+        "SELECT tarefa_id FROM subtarefas WHERE id = ?", (sid,)
+    ).fetchone()
+    if dona:
+        _carimbar_tarefa(con, dona[0])
     con.commit()
     con.close()
 
 
 def excluir_subtarefa(sid):
     con = sqlite3.connect(DB)
+    dona = con.execute(
+        "SELECT tarefa_id FROM subtarefas WHERE id = ?", (sid,)
+    ).fetchone()
     con.execute("DELETE FROM subtarefas WHERE id = ?", (sid,))
+    if dona:
+        _carimbar_tarefa(con, dona[0])
     con.commit()
     con.close()
 
@@ -463,8 +582,9 @@ def marcar_concluida(tid, valor):
     novo_id = None
     if valor:
         con.execute(
-            "UPDATE tarefas SET concluida = 1,"
-            " concluida_em = datetime('now','localtime') WHERE id = ?",
+            f"UPDATE tarefas SET concluida = 1,"
+            f" concluida_em = datetime('now','localtime'),"
+            f" modificado_em = {_AGORA}, sync_pendente = 1 WHERE id = ?",
             (tid,),
         )
         t = con.execute("SELECT * FROM tarefas WHERE id = ?", (tid,)).fetchone()
@@ -475,10 +595,11 @@ def marcar_concluida(tid, valor):
                     datetime.fromisoformat(prox) - ANTECEDENCIA_REPETICAO
                 ).isoformat(sep=" ", timespec="minutes")
                 cur = con.execute(
-                    """
+                    f"""
                     INSERT INTO tarefas
-                        (titulo, categoria, prioridade, prazo, repetir, aparece_em)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (titulo, categoria, prioridade, prazo, repetir, aparece_em,
+                         uuid, modificado_em, sync_pendente)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, {_AGORA}, 1)
                     """,
                     (
                         t["titulo"],
@@ -487,6 +608,7 @@ def marcar_concluida(tid, valor):
                         prox,
                         t["repetir"],
                         aparece,
+                        _novo_uuid(),
                     ),
                 )
                 novo_id = cur.lastrowid
@@ -508,7 +630,8 @@ def marcar_concluida(tid, valor):
                 )
     else:
         con.execute(
-            "UPDATE tarefas SET concluida = 0, concluida_em = NULL WHERE id = ?",
+            f"UPDATE tarefas SET concluida = 0, concluida_em = NULL,"
+            f" modificado_em = {_AGORA}, sync_pendente = 1 WHERE id = ?",
             (tid,),
         )
     con.commit()
@@ -570,11 +693,16 @@ def restaurar_tarefa(snap):
     """Reinsere uma tarefa excluída a partir do snapshot. Retorna o novo id."""
     t = snap["tarefa"]
     listas = snap["listas"] or [t["categoria"]]
+    # Desfazer reusa o uuid original: pro sync é a MESMA tarefa voltando,
+    # então a lápide dela também é removida
+    uid = t.get("uuid") or _novo_uuid()
     con = sqlite3.connect(DB)
+    con.execute("DELETE FROM exclusoes WHERE uuid = ?", (uid,))
     cur = con.execute(
-        "INSERT INTO tarefas (titulo, categoria, concluida, criada_em,"
-        " concluida_em, descricao_conclusao, prioridade, prazo, repetir,"
-        " aparece_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO tarefas (titulo, categoria, concluida, criada_em,"
+        f" concluida_em, descricao_conclusao, prioridade, prazo, repetir,"
+        f" aparece_em, uuid, modificado_em, sync_pendente)"
+        f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {_AGORA}, 1)",
         (
             t["titulo"],
             listas[0],
@@ -586,11 +714,16 @@ def restaurar_tarefa(snap):
             t["prazo"],
             t["repetir"],
             t["aparece_em"],
+            uid,
         ),
     )
     novo_id = cur.lastrowid
     for nome in listas:
-        con.execute("INSERT OR IGNORE INTO listas (nome) VALUES (?)", (nome,))
+        con.execute(
+            f"INSERT OR IGNORE INTO listas (nome, uuid, modificado_em,"
+            f" sync_pendente) VALUES (?, ?, {_AGORA}, 1)",
+            (nome, _novo_uuid()),
+        )
         con.execute(
             "INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista) VALUES (?, ?)",
             (novo_id, nome),
@@ -609,7 +742,9 @@ def restaurar_tarefa(snap):
 # ---------------------------------------------------------------------------
 # Backup e restauração
 # ---------------------------------------------------------------------------
-SCHEMA_BACKUP = 1
+# Schema 2 (fundação do sync): leva uuid e modificado_em de tarefas e
+# listas, pra identidade sobreviver ao ciclo backup -> restauração
+SCHEMA_BACKUP = 2
 
 
 def exportar_json():
@@ -617,7 +752,12 @@ def exportar_json():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
     listas = [
-        {"nome": lst["nome"], "oculta": bool(lst["oculta"])}
+        {
+            "nome": lst["nome"],
+            "oculta": bool(lst["oculta"]),
+            "uuid": lst["uuid"],
+            "modificado_em": lst["modificado_em"],
+        }
         for lst in con.execute("SELECT * FROM listas ORDER BY nome")
     ]
     tarefas = []
@@ -653,6 +793,8 @@ def exportar_json():
                 "prazo": t["prazo"],
                 "repetir": t["repetir"],
                 "aparece_em": t["aparece_em"],
+                "uuid": t["uuid"],
+                "modificado_em": t["modificado_em"],
                 "subtarefas": subtarefas,
             }
         )
@@ -691,18 +833,29 @@ def importar_json(texto):
         con.execute("DELETE FROM tarefa_listas")
         con.execute("DELETE FROM tarefas")
         con.execute("DELETE FROM listas")
+        # O backup restaurado vira a nova verdade: sem lápides antigas, e
+        # tudo pendente de envio pro sync
+        con.execute("DELETE FROM exclusoes")
         for lst in dados.get("listas", []):
             con.execute(
-                "INSERT OR IGNORE INTO listas (nome, oculta) VALUES (?, ?)",
-                (lst["nome"], 1 if lst.get("oculta") else 0),
+                f"INSERT OR IGNORE INTO listas (nome, oculta, uuid,"
+                f" modificado_em, sync_pendente) VALUES (?, ?, ?,"
+                f" COALESCE(?, {_AGORA}), 1)",
+                (
+                    lst["nome"],
+                    1 if lst.get("oculta") else 0,
+                    lst.get("uuid") or _novo_uuid(),
+                    lst.get("modificado_em"),
+                ),
             )
         agora = datetime.now().isoformat(sep=" ", timespec="seconds")
         for t in dados.get("tarefas", []):
             listas = t.get("listas") or ["Padrão"]
             cur = con.execute(
-                "INSERT INTO tarefas (titulo, categoria, concluida, criada_em,"
-                " concluida_em, descricao_conclusao, prioridade, prazo, repetir,"
-                " aparece_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO tarefas (titulo, categoria, concluida, criada_em,"
+                f" concluida_em, descricao_conclusao, prioridade, prazo, repetir,"
+                f" aparece_em, uuid, modificado_em, sync_pendente)"
+                f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, {_AGORA}), 1)",
                 (
                     t["titulo"],
                     listas[0],
@@ -714,11 +867,17 @@ def importar_json(texto):
                     t.get("prazo"),
                     t.get("repetir"),
                     t.get("aparece_em"),
+                    t.get("uuid") or _novo_uuid(),
+                    t.get("modificado_em"),
                 ),
             )
             tid = cur.lastrowid
             for nome in listas:
-                con.execute("INSERT OR IGNORE INTO listas (nome) VALUES (?)", (nome,))
+                con.execute(
+                    f"INSERT OR IGNORE INTO listas (nome, uuid, modificado_em,"
+                    f" sync_pendente) VALUES (?, ?, {_AGORA}, 1)",
+                    (nome, _novo_uuid()),
+                )
                 con.execute(
                     "INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista)"
                     " VALUES (?, ?)",
