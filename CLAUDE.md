@@ -8,8 +8,14 @@ de cantos arredondados com chips de lista e borda de prioridade.
 
 ## Decisões do projeto
 
-- **100% offline nesta versão.** Persistência só em SQLite local (`tarefas.db`).
-  Não implementar banco online nem sync.
+- **Offline-first.** O SQLite local (`tarefas.db`) é sempre a verdade; o app
+  funciona 100% sem internet. Desde a v1.8.0 existe sync OPCIONAL via
+  Supabase (REST/PostgREST, urllib puro, motor em `sync.py`): merge por
+  documento com "último carimbo leva", lápides pra exclusão, uuids como
+  identidade. A credencial (service_role) NUNCA vai no código nem no
+  pacote: o usuário cola URL + chave na tela "Configurar sincronização"
+  de cada dispositivo (fica em `sync.json` no diretório de dados). As
+  tabelas remotas têm RLS ligado sem policy: chave anon não acessa nada.
 - Prioridade manda na ordenação (alta > média > baixa); prazo mais próximo
   desempata; sem prazo vai pro fim do empate.
 - Tarefas agrupadas por situação do prazo: Atrasada / Hoje / Próximas / Sem data.
@@ -248,6 +254,14 @@ a atualização por cima.
       vez (corrida boot novo x teardown velho); corrigido com sleep no
       reiniciar() a partir da versão seguinte, a v1.7.1→seguinte ainda
       usa o código velho e pode soluçar
+- [x] Sincronização online (v1.8.0, 18/07/2026): fundação (uuids +
+      carimbos + lápides + backup schema 2) e motor completo, validado de
+      ponta a ponta contra o Supabase real com dois dispositivos
+      simulados (conflito resolvido pelo carimbo maior, exclusão sem
+      ressurreição, rename de lista propagando). Sync silencioso ao abrir
+      + botão "Sincronizar agora". Sem segundo plano: só sincroniza com o
+      app aberto (sinergia futura com as notificações nativas). Detalhes
+      da arquitetura na seção "Decisões do projeto"
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)
