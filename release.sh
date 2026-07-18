@@ -38,7 +38,9 @@ echo "==> Buildando desktop Linux v$VERSAO_PYPROJECT..."
 CFLAGS="-Wno-macro-redefined" CXXFLAGS="-Wno-macro-redefined" $FLET build linux
 
 echo "==> Empacotando tarefas-linux-x64.tar.gz..."
-# Conteúdo na raiz do tar: extrair direto por cima de ~/.local/opt/tarefas
+# Conteúdo na raiz do tar: extrair direto por cima de ~/.local/opt/tarefas.
+# O icon.png vai junto porque o atalho .desktop da gaveta aponta pra ele
+cp assets/icon.png build/linux/icon.png
 tar -czf build/tarefas-linux-x64.tar.gz -C build/linux .
 
 echo "==> Publicando release v$VERSAO_PYPROJECT no GitHub..."

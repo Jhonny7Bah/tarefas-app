@@ -11,12 +11,20 @@ Empacotar Android:  flet build apk --split-per-abi
 
 import asyncio
 import os
+import tempfile
 from datetime import datetime
 
 import flet as ft
 
 import db
-from atualizacao import buscar_ultima_release, parse_versao
+from atualizacao import (
+    baixar_arquivo,
+    buscar_ultima_release,
+    dir_instalacao_atual,
+    instalar_pacote,
+    parse_versao,
+    reiniciar,
+)
 from constantes import (
     COR_ACENTO,
     COR_ATRASADA,
@@ -38,7 +46,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.7.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.7.1"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -789,10 +797,70 @@ def main(page: ft.Page):
                 conteudo.append(ft.Text(notas, size=12, color=COR_TEXTO_SUAVE))
 
             url_download = rel["url_linux"] if eh_desktop else rel["url"]
+            # Empacotado no Linux e com pacote na release: atualização
+            # completa dentro do app. Senão, baixa pelo navegador como sempre
+            dir_inst = dir_instalacao_atual() if eh_desktop else None
+            automatica = dir_inst is not None and url_download.endswith(".tar.gz")
 
             async def baixar(ev, url=url_download):
                 page.pop_dialog()
                 await page.launch_url(url)
+
+            async def atualizar_agora(ev, url=url_download, destino=dir_inst):
+                page.pop_dialog()
+                rotulo = ft.Text("Baixando a nova versão…")
+                barra = ft.ProgressBar(value=None, color=COR_ACENTO)
+                page.show_dialog(
+                    ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text("Atualizando"),
+                        content=ft.Column([rotulo, barra], tight=True, spacing=16),
+                        bgcolor=COR_FUNDO,
+                    )
+                )
+                progresso = {"feito": 0, "total": 0, "fim": False}
+
+                def ao_progredir(feito, total):
+                    progresso["feito"], progresso["total"] = feito, total
+
+                async def acompanhar():
+                    while not progresso["fim"]:
+                        if progresso["total"]:
+                            barra.value = progresso["feito"] / progresso["total"]
+                            mb = progresso["feito"] // (1024 * 1024)
+                            mb_total = -(-progresso["total"] // (1024 * 1024))
+                            rotulo.value = f"Baixando… {mb} de {mb_total} MB"
+                        page.update()
+                        await asyncio.sleep(0.25)
+
+                page.run_task(acompanhar)
+                try:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        pacote = os.path.join(tmp, "tarefas.tar.gz")
+                        await asyncio.to_thread(
+                            baixar_arquivo, url, pacote, ao_progredir
+                        )
+                        progresso["fim"] = True
+                        rotulo.value = "Instalando…"
+                        barra.value = None
+                        page.update()
+                        await asyncio.to_thread(instalar_pacote, pacote, destino)
+                except Exception:
+                    progresso["fim"] = True
+                    page.pop_dialog()
+                    avisar("A atualização falhou. Sua versão atual segue intacta.")
+                    return
+                rotulo.value = "Pronto! Reabrindo o app…"
+                page.update()
+                await asyncio.sleep(0.6)
+                reiniciar(destino)
+
+            if automatica:
+                botao_download = botao_cheio(
+                    "Atualizar", atualizar_agora, icone=ft.Icons.DOWNLOAD
+                )
+            else:
+                botao_download = botao_cheio("Baixar", baixar, icone=ft.Icons.DOWNLOAD)
 
             page.show_dialog(
                 ft.AlertDialog(
@@ -802,7 +870,7 @@ def main(page: ft.Page):
                     ),
                     actions=[
                         botao_texto("Depois", lambda ev: page.pop_dialog()),
-                        botao_cheio("Baixar", baixar, icone=ft.Icons.DOWNLOAD),
+                        botao_download,
                     ],
                     bgcolor=COR_FUNDO,
                 )
