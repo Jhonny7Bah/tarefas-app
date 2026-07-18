@@ -17,6 +17,7 @@ from datetime import datetime
 import flet as ft
 
 import db
+import sync
 from atualizacao import (
     baixar_arquivo,
     buscar_ultima_release,
@@ -730,6 +731,17 @@ def main(page: ft.Page):
                 on_click=abrir_restaurar,
             ),
             ft.ListTile(
+                leading=ft.Icon(ft.Icons.CLOUD_SYNC_OUTLINED),
+                title=ft.Text("Sincronizar agora"),
+                visible=sync.carregar_config() is not None,
+                on_click=sincronizar_agora,
+            ),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.CLOUD_OUTLINED),
+                title=ft.Text("Configurar sincronização"),
+                on_click=abrir_config_sync,
+            ),
+            ft.ListTile(
                 leading=ft.Icon(ft.Icons.SYSTEM_UPDATE_ALT),
                 title=ft.Text("Verificar atualização"),
                 on_click=verificar_atualizacao,
@@ -877,6 +889,98 @@ def main(page: ft.Page):
             )
         else:
             avisar(f"Você já está na última versão (v{VERSAO})")
+
+    # --- Sincronização online -----------------------------------------------
+    # A credencial mora só no dispositivo (sync.json); o app publicado não
+    # carrega segredo nenhum. O sync roda ao abrir e no botão da gaveta
+    campo_sync_url = ft.TextField(
+        label="URL do projeto",
+        hint_text="https://xxxxx.supabase.co",
+        label_style=ETIQUETA_BRANCA,
+    )
+    campo_sync_chave = ft.TextField(
+        label="Chave de acesso",
+        password=True,
+        can_reveal_password=True,
+        label_style=ETIQUETA_BRANCA,
+    )
+    sync_rodando = {"valor": False}
+
+    async def executar_sync(manual):
+        """Sincroniza em segundo plano; silencioso quando automático."""
+        cfg = sync.carregar_config()
+        if not cfg or sync_rodando["valor"]:
+            return
+        sync_rodando["valor"] = True
+        try:
+            resultado = await asyncio.to_thread(sync.sincronizar, cfg)
+        except Exception:
+            if manual:
+                avisar("Não deu pra sincronizar. Sem internet?")
+            return
+        finally:
+            sync_rodando["valor"] = False
+        if resultado["recebidas"]:
+            render_tarefas()
+        if manual:
+            avisar(
+                f"Sincronizado! Recebeu {resultado['recebidas']},"
+                f" enviou {resultado['enviadas']}"
+            )
+        elif resultado["recebidas"]:
+            avisar("Tarefas sincronizadas")
+
+    async def sincronizar_agora(e):
+        await page.close_drawer()
+        avisar("Sincronizando…")
+        await executar_sync(manual=True)
+
+    async def abrir_config_sync(e):
+        await page.close_drawer()
+        cfg = sync.carregar_config() or {}
+        campo_sync_url.value = cfg.get("url", "")
+        campo_sync_chave.value = cfg.get("chave", "")
+        page.show_dialog(dialogo_sync)
+
+    async def salvar_config_sync(e):
+        url = (campo_sync_url.value or "").strip()
+        chave = (campo_sync_chave.value or "").strip()
+        if not url or not chave:
+            avisar("Preencha a URL e a chave.")
+            return
+        page.pop_dialog()
+        avisar("Testando a conexão…")
+        cfg = sync.salvar_config(url, chave)
+        try:
+            await asyncio.to_thread(sync.testar_conexao, cfg)
+        except Exception:
+            avisar("Não conectou. Confere a URL e a chave.")
+            return
+        avisar("Sincronização configurada!")
+        await executar_sync(manual=True)
+
+    dialogo_sync = ft.AlertDialog(
+        title=ft.Text("Configurar sincronização"),
+        content=ft.Column(
+            [
+                ft.Text(
+                    "Seus dados continuam no aparelho; a nuvem só serve de"
+                    " ponto de encontro entre seus dispositivos.",
+                    size=12,
+                    color=COR_TEXTO_SUAVE,
+                ),
+                campo_sync_url,
+                campo_sync_chave,
+            ],
+            tight=True,
+            spacing=12,
+        ),
+        actions=[
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Salvar", salvar_config_sync),
+        ],
+        bgcolor=COR_FUNDO,
+    )
 
     # --- Backup: exportar e restaurar ---------------------------------------
     seletor_arquivos = ft.FilePicker()
@@ -1481,6 +1585,12 @@ def main(page: ft.Page):
         page.add(coluna_central)
 
     render_tarefas()
+
+    # Sync silencioso na abertura (só faz algo se estiver configurado)
+    async def sync_inicial():
+        await executar_sync(manual=False)
+
+    page.run_task(sync_inicial)
 
 
 ft.run(main)

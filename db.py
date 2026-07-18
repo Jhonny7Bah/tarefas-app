@@ -740,6 +740,259 @@ def restaurar_tarefa(snap):
 
 
 # ---------------------------------------------------------------------------
+# Apoio à sincronização (o motor REST vive em sync.py; aqui, só banco)
+# ---------------------------------------------------------------------------
+
+
+def _documento_tarefa(con, t):
+    """Documento completo da tarefa: o formato que viaja no sync e no backup."""
+    nomes = [
+        r[0]
+        for r in con.execute(
+            "SELECT lista FROM tarefa_listas WHERE tarefa_id = ? ORDER BY lista",
+            (t["id"],),
+        )
+    ]
+    subtarefas = [
+        {
+            "titulo": s["titulo"],
+            "concluida": bool(s["concluida"]),
+            "criada_em": s["criada_em"],
+            "concluida_em": s["concluida_em"],
+        }
+        for s in con.execute(
+            "SELECT * FROM subtarefas WHERE tarefa_id = ? ORDER BY id",
+            (t["id"],),
+        )
+    ]
+    return {
+        "titulo": t["titulo"],
+        "listas": nomes or [t["categoria"]],
+        "concluida": bool(t["concluida"]),
+        "criada_em": t["criada_em"],
+        "concluida_em": t["concluida_em"],
+        "descricao_conclusao": t["descricao_conclusao"],
+        "prioridade": t["prioridade"],
+        "prazo": t["prazo"],
+        "repetir": t["repetir"],
+        "aparece_em": t["aparece_em"],
+        "subtarefas": subtarefas,
+    }
+
+
+def indice_sync():
+    """{uuid: modificado_em} locais, pro merge decidir quem é mais novo."""
+    con = sqlite3.connect(DB)
+    tarefas = dict(con.execute("SELECT uuid, modificado_em FROM tarefas"))
+    listas = dict(con.execute("SELECT uuid, modificado_em FROM listas"))
+    con.close()
+    return {"tarefas": tarefas, "listas": listas}
+
+
+def pendentes_de_envio():
+    """Documentos com mudança local ainda não enviada."""
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    tarefas = [
+        {
+            "uuid": t["uuid"],
+            "dados": _documento_tarefa(con, t),
+            "modificado_em": t["modificado_em"],
+        }
+        for t in con.execute("SELECT * FROM tarefas WHERE sync_pendente = 1")
+    ]
+    listas = [
+        {
+            "uuid": lst["uuid"],
+            "dados": {"nome": lst["nome"], "oculta": bool(lst["oculta"])},
+            "modificado_em": lst["modificado_em"],
+        }
+        for lst in con.execute("SELECT * FROM listas WHERE sync_pendente = 1")
+    ]
+    con.close()
+    return {"tarefas": tarefas, "listas": listas}
+
+
+def lapides():
+    """{uuid: {tipo, excluido_em}} das exclusões ainda não enviadas."""
+    con = sqlite3.connect(DB)
+    linhas = {
+        r[0]: {"tipo": r[1], "excluido_em": r[2]}
+        for r in con.execute("SELECT uuid, tipo, excluido_em FROM exclusoes")
+    }
+    con.close()
+    return linhas
+
+
+def remover_lapide(uid):
+    con = sqlite3.connect(DB)
+    con.execute("DELETE FROM exclusoes WHERE uuid = ?", (uid,))
+    con.commit()
+    con.close()
+
+
+def limpar_lapides(uids):
+    con = sqlite3.connect(DB)
+    con.executemany("DELETE FROM exclusoes WHERE uuid = ?", [(u,) for u in uids])
+    con.commit()
+    con.close()
+
+
+def marcar_enviadas(uuids_tarefas, uuids_listas):
+    con = sqlite3.connect(DB)
+    con.executemany(
+        "UPDATE tarefas SET sync_pendente = 0 WHERE uuid = ?",
+        [(u,) for u in uuids_tarefas],
+    )
+    con.executemany(
+        "UPDATE listas SET sync_pendente = 0 WHERE uuid = ?",
+        [(u,) for u in uuids_listas],
+    )
+    con.commit()
+    con.close()
+
+
+def aplicar_lista_remota(uid, dados, modificado_em):
+    """Aplica uma lista vinda do servidor (o merge já decidiu que ela vence)."""
+    con = sqlite3.connect(DB)
+    existente = con.execute("SELECT id FROM listas WHERE uuid = ?", (uid,)).fetchone()
+    oculta = 1 if dados.get("oculta") else 0
+    if existente:
+        antigo = con.execute(
+            "SELECT nome FROM listas WHERE id = ?", (existente[0],)
+        ).fetchone()[0]
+        con.execute(
+            "UPDATE listas SET nome = ?, oculta = ?, modificado_em = ?,"
+            " sync_pendente = 0 WHERE id = ?",
+            (dados["nome"], oculta, modificado_em, existente[0]),
+        )
+        if antigo != dados["nome"]:
+            con.execute(
+                "UPDATE tarefas SET categoria = ? WHERE categoria = ?",
+                (dados["nome"], antigo),
+            )
+            con.execute(
+                "UPDATE OR IGNORE tarefa_listas SET lista = ? WHERE lista = ?",
+                (dados["nome"], antigo),
+            )
+            con.execute("DELETE FROM tarefa_listas WHERE lista = ?", (antigo,))
+    else:
+        mesma_por_nome = con.execute(
+            "SELECT id FROM listas WHERE nome = ?", (dados["nome"],)
+        ).fetchone()
+        if mesma_por_nome:
+            # lista criada em paralelo nos dois lados: adota o uuid do servidor
+            con.execute(
+                "UPDATE listas SET uuid = ?, oculta = ?, modificado_em = ?,"
+                " sync_pendente = 0 WHERE id = ?",
+                (uid, oculta, modificado_em, mesma_por_nome[0]),
+            )
+        else:
+            con.execute(
+                "INSERT INTO listas (nome, oculta, uuid, modificado_em,"
+                " sync_pendente) VALUES (?, ?, ?, ?, 0)",
+                (dados["nome"], oculta, uid, modificado_em),
+            )
+    con.commit()
+    con.close()
+
+
+def aplicar_tarefa_remota(uid, dados, modificado_em):
+    """Aplica uma tarefa vinda do servidor, substituindo o documento local."""
+    listas = dados.get("listas") or ["Padrão"]
+    campos = (
+        dados["titulo"],
+        listas[0],
+        1 if dados.get("concluida") else 0,
+        dados.get("criada_em"),
+        dados.get("concluida_em"),
+        dados.get("descricao_conclusao"),
+        dados.get("prioridade", 1),
+        dados.get("prazo"),
+        dados.get("repetir"),
+        dados.get("aparece_em"),
+        modificado_em,
+    )
+    con = sqlite3.connect(DB)
+    existente = con.execute("SELECT id FROM tarefas WHERE uuid = ?", (uid,)).fetchone()
+    if existente:
+        tid = existente[0]
+        con.execute(
+            "UPDATE tarefas SET titulo = ?, categoria = ?, concluida = ?,"
+            " criada_em = ?, concluida_em = ?, descricao_conclusao = ?,"
+            " prioridade = ?, prazo = ?, repetir = ?, aparece_em = ?,"
+            " modificado_em = ?, sync_pendente = 0 WHERE id = ?",
+            (*campos, tid),
+        )
+        con.execute("DELETE FROM subtarefas WHERE tarefa_id = ?", (tid,))
+        con.execute("DELETE FROM tarefa_listas WHERE tarefa_id = ?", (tid,))
+    else:
+        cur = con.execute(
+            "INSERT INTO tarefas (titulo, categoria, concluida, criada_em,"
+            " concluida_em, descricao_conclusao, prioridade, prazo, repetir,"
+            " aparece_em, modificado_em, uuid, sync_pendente)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            (*campos, uid),
+        )
+        tid = cur.lastrowid
+    for nome in listas:
+        con.execute(
+            f"INSERT OR IGNORE INTO listas (nome, uuid, modificado_em,"
+            f" sync_pendente) VALUES (?, ?, {_AGORA}, 1)",
+            (nome, _novo_uuid()),
+        )
+        con.execute(
+            "INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista) VALUES (?, ?)",
+            (tid, nome),
+        )
+    for s in dados.get("subtarefas", []):
+        con.execute(
+            "INSERT INTO subtarefas (tarefa_id, titulo, concluida, criada_em,"
+            " concluida_em) VALUES (?, ?, ?, ?, ?)",
+            (
+                tid,
+                s["titulo"],
+                1 if s.get("concluida") else 0,
+                s.get("criada_em"),
+                s.get("concluida_em"),
+            ),
+        )
+    con.commit()
+    con.close()
+
+
+def excluir_remoto(tipo, uid):
+    """Exclusão vinda do servidor: apaga local SEM criar lápide nova."""
+    con = sqlite3.connect(DB)
+    if tipo == "tarefa":
+        alvo = con.execute("SELECT id FROM tarefas WHERE uuid = ?", (uid,)).fetchone()
+        if alvo:
+            con.execute("DELETE FROM subtarefas WHERE tarefa_id = ?", (alvo[0],))
+            con.execute("DELETE FROM tarefa_listas WHERE tarefa_id = ?", (alvo[0],))
+            con.execute("DELETE FROM tarefas WHERE id = ?", (alvo[0],))
+    else:
+        alvo = con.execute(
+            "SELECT id, nome FROM listas WHERE uuid = ?", (uid,)
+        ).fetchone()
+        if alvo and alvo[1] != "Padrão":
+            con.execute("DELETE FROM tarefa_listas WHERE lista = ?", (alvo[1],))
+            con.execute(
+                """
+                INSERT OR IGNORE INTO tarefa_listas (tarefa_id, lista)
+                SELECT id, 'Padrão' FROM tarefas
+                WHERE id NOT IN (SELECT tarefa_id FROM tarefa_listas)
+                """
+            )
+            con.execute(
+                "UPDATE tarefas SET categoria = 'Padrão' WHERE categoria = ?",
+                (alvo[1],),
+            )
+            con.execute("DELETE FROM listas WHERE id = ?", (alvo[0],))
+    con.commit()
+    con.close()
+
+
+# ---------------------------------------------------------------------------
 # Backup e restauração
 # ---------------------------------------------------------------------------
 # Schema 2 (fundação do sync): leva uuid e modificado_em de tarefas e
@@ -762,42 +1015,10 @@ def exportar_json():
     ]
     tarefas = []
     for t in con.execute("SELECT * FROM tarefas ORDER BY id"):
-        nomes = [
-            r[0]
-            for r in con.execute(
-                "SELECT lista FROM tarefa_listas WHERE tarefa_id = ? ORDER BY lista",
-                (t["id"],),
-            )
-        ]
-        subtarefas = [
-            {
-                "titulo": s["titulo"],
-                "concluida": bool(s["concluida"]),
-                "criada_em": s["criada_em"],
-                "concluida_em": s["concluida_em"],
-            }
-            for s in con.execute(
-                "SELECT * FROM subtarefas WHERE tarefa_id = ? ORDER BY id",
-                (t["id"],),
-            )
-        ]
-        tarefas.append(
-            {
-                "titulo": t["titulo"],
-                "listas": nomes or [t["categoria"]],
-                "concluida": bool(t["concluida"]),
-                "criada_em": t["criada_em"],
-                "concluida_em": t["concluida_em"],
-                "descricao_conclusao": t["descricao_conclusao"],
-                "prioridade": t["prioridade"],
-                "prazo": t["prazo"],
-                "repetir": t["repetir"],
-                "aparece_em": t["aparece_em"],
-                "uuid": t["uuid"],
-                "modificado_em": t["modificado_em"],
-                "subtarefas": subtarefas,
-            }
-        )
+        doc = _documento_tarefa(con, t)
+        doc["uuid"] = t["uuid"]
+        doc["modificado_em"] = t["modificado_em"]
+        tarefas.append(doc)
     con.close()
     return json.dumps(
         {
