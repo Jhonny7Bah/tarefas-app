@@ -106,7 +106,16 @@ def instalar_pacote(caminho_tar, dir_instalacao):
 
 
 def reiniciar(dir_instalacao):
-    """Abre a versão recém-instalada e encerra este processo."""
+    """Abre a versão recém-instalada e encerra este processo.
+
+    O sleep dá tempo deste processo morrer por completo antes do novo
+    motor gráfico subir; sem ele, o boot da versão nova disputa o
+    teardown da velha e pode crashar (visto na atualização pra v1.7.1).
+    """
     exe = Path(dir_instalacao) / "tarefas"
-    subprocess.Popen([str(exe)], cwd=str(dir_instalacao), start_new_session=True)
+    subprocess.Popen(
+        ["/bin/sh", "-c", f'sleep 1; exec "{exe}"'],
+        cwd=str(dir_instalacao),
+        start_new_session=True,
+    )
     os._exit(0)

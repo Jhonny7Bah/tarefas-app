@@ -235,9 +235,19 @@ a atualização por cima.
       atualização baixa o asset da plataforma. Instalado na gaveta de apps
       do usuário via ~/.local/opt/tarefas + tarefas.desktop; dados em
       ~/.local/share/dev.jhon7bah.tarefas. PRÓXIMOS CAPÍTULOS COMBINADOS:
-      autoatualização desktop (trocar ~/.local/opt/tarefas sozinho),
       fase 2 responsiva só depois de uso real no PC, e sync online
       (debater Supabase/Postgres; Sheets descartado)
+- [x] Autoatualização desktop (v1.7.1, validada de ponta a ponta em
+      18/07/2026): botão Atualizar baixa o tar.gz com barra de progresso,
+      troca a instalação com swap atômico (falha no meio deixa a versão
+      atual intacta; funções puras em atualizacao.py, testadas) e reabre
+      sozinho. IMPORTANTE: o app empacotado extrai o app.zip pra
+      ~/.local/share/dev.jhon7bah.tarefas/flet/app no BOOT (com .hash);
+      sessão aberta não enxerga instalação nova, tem que fechar e abrir.
+      Crash conhecido: o reinício automático da v1.7.1 pode crashar uma
+      vez (corrida boot novo x teardown velho); corrigido com sleep no
+      reiniciar() a partir da versão seguinte, a v1.7.1→seguinte ainda
+      usa o código velho e pode soluçar
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)
