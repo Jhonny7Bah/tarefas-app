@@ -228,6 +228,16 @@ a atualização por cima.
       banco fica intacto se a importação falhar. FilePicker via
       page.services; funções em db.py (exportar_json/importar_json/
       exportar_db_bytes/importar_db_bytes) com testes de ida e volta
+- [x] App desktop Linux (v1.7.0, 18/07/2026): fase 1 da UI (janela 480x850,
+      coluna central de até 520px, aviso acompanhando) com Android intacto;
+      `flet build linux` funcionando (flags no "Como rodar"); release.sh
+      publica o tarefas-linux-x64.tar.gz junto do APK e o botão de
+      atualização baixa o asset da plataforma. Instalado na gaveta de apps
+      do usuário via ~/.local/opt/tarefas + tarefas.desktop; dados em
+      ~/.local/share/dev.jhon7bah.tarefas. PRÓXIMOS CAPÍTULOS COMBINADOS:
+      autoatualização desktop (trocar ~/.local/opt/tarefas sozinho),
+      fase 2 responsiva só depois de uso real no PC, e sync online
+      (debater Supabase/Postgres; Sheets descartado)
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)
