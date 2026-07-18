@@ -19,6 +19,14 @@ NOMES_REPETICAO = {v: k for k, v in REPETICOES.items()}
 
 MAX_SUBTAREFAS = 10
 
+# Desktop: o app vive numa coluna central de largura limitada (mesma cara
+# do celular); a janela abre em proporção de celular e tem tamanho mínimo
+LARGURA_CONTEUDO_DESKTOP = 520
+JANELA_LARGURA = 480
+JANELA_ALTURA = 850
+JANELA_LARGURA_MIN = 400
+JANELA_ALTURA_MIN = 600
+
 COR_FUNDO = "#121417"
 COR_CARD = "#1e2227"
 COR_ACENTO = "#10b981"

@@ -24,6 +24,11 @@ from constantes import (
     COR_CARD,
     COR_FUNDO,
     COR_TEXTO_SUAVE,
+    JANELA_ALTURA,
+    JANELA_ALTURA_MIN,
+    JANELA_LARGURA,
+    JANELA_LARGURA_MIN,
+    LARGURA_CONTEUDO_DESKTOP,
     MAX_SUBTAREFAS,
     NOMES_PRIORIDADE,
     NOMES_REPETICAO,
@@ -58,6 +63,19 @@ def main(page: ft.Page):
         ),
     )
     page.padding = 0
+
+    # No computador o app mantém a cara de celular: janela em proporção de
+    # celular e conteúdo numa coluna central de largura limitada
+    eh_desktop = page.platform in (
+        ft.PagePlatform.LINUX,
+        ft.PagePlatform.MACOS,
+        ft.PagePlatform.WINDOWS,
+    )
+    if eh_desktop:
+        page.window.width = JANELA_LARGURA
+        page.window.height = JANELA_ALTURA
+        page.window.min_width = JANELA_LARGURA_MIN
+        page.window.min_height = JANELA_ALTURA_MIN
 
     # A rolagem fica na vista externa; o recuo à direita impede a barra de
     # rolagem de cobrir a borda dos cards
@@ -770,7 +788,9 @@ def main(page: ft.Page):
             if notas:
                 conteudo.append(ft.Text(notas, size=12, color=COR_TEXTO_SUAVE))
 
-            async def baixar(ev, url=rel["url"]):
+            url_download = rel["url_linux"] if eh_desktop else rel["url"]
+
+            async def baixar(ev, url=url_download):
                 page.pop_dialog()
                 await page.launch_url(url)
 
@@ -1364,7 +1384,33 @@ def main(page: ft.Page):
     page.appbar = appbar
     fab.on_click = abrir_adicionar
     page.floating_action_button = fab
-    page.add(ft.Container(area_conteudo, padding=12, expand=True))
+    coluna_central = ft.Container(area_conteudo, padding=12, expand=True)
+    if eh_desktop:
+        # Coluna central de largura limitada; o aviso flutuante acompanha
+        def ajustar_largura():
+            largura = page.width or LARGURA_CONTEUDO_DESKTOP
+            coluna_central.width = min(LARGURA_CONTEUDO_DESKTOP, largura)
+            margem = max(16.0, (largura - LARGURA_CONTEUDO_DESKTOP) / 2 + 16)
+            aviso_container.left = margem
+            aviso_container.right = margem
+
+        def ao_redimensionar(e):
+            ajustar_largura()
+            page.update()
+
+        coluna_central.expand = False
+        ajustar_largura()
+        page.on_resize = ao_redimensionar
+        page.add(
+            ft.Row(
+                [coluna_central],
+                alignment=ft.MainAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                expand=True,
+            )
+        )
+    else:
+        page.add(coluna_central)
 
     render_tarefas()
 
