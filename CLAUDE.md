@@ -250,10 +250,13 @@ a atualização por cima.
       sozinho. IMPORTANTE: o app empacotado extrai o app.zip pra
       ~/.local/share/dev.jhon7bah.tarefas/flet/app no BOOT (com .hash);
       sessão aberta não enxerga instalação nova, tem que fechar e abrir.
-      Crash conhecido: o reinício automático da v1.7.1 pode crashar uma
-      vez (corrida boot novo x teardown velho); corrigido com sleep no
-      reiniciar() a partir da versão seguinte, a v1.7.1→seguinte ainda
-      usa o código velho e pode soluçar
+      Crash pós-reinício RESOLVIDO (validado 18/07/2026 com pacote de
+      teste): a causa real era o app novo herdar as FLET_* do processo
+      morto (sockets da sessão velha), não só corrida de teardown; o
+      reiniciar() agora limpa o ambiente, espera 2s e grava reinicio.log
+      no diretório de dados. Como quem reinicia é sempre a versão velha,
+      a atualização v1.8.1→seguinte ainda usa o código antigo e pode
+      soluçar uma última vez; dali em diante, limpo
 - [x] Sincronização online (v1.8.0, 18/07/2026): fundação (uuids +
       carimbos + lápides + backup schema 2) e motor completo, validado de
       ponta a ponta contra o Supabase real com dois dispositivos
