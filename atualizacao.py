@@ -108,14 +108,26 @@ def instalar_pacote(caminho_tar, dir_instalacao):
 def reiniciar(dir_instalacao):
     """Abre a versão recém-instalada e encerra este processo.
 
-    O sleep dá tempo deste processo morrer por completo antes do novo
-    motor gráfico subir; sem ele, o boot da versão nova disputa o
-    teardown da velha e pode crashar (visto na atualização pra v1.7.1).
+    Dois cuidados, os dois aprendidos com crash real pós-atualização:
+    o sleep dá tempo deste processo morrer antes do novo motor subir, e
+    o ambiente vai LIMPO das variáveis do runtime (FLET_*): o filho as
+    herdaria apontando pra sockets/caminhos do processo morto. O log em
+    reinicio.log guarda a saída do boot pra diagnóstico.
     """
     exe = Path(dir_instalacao) / "tarefas"
+    ambiente = {
+        chave: valor
+        for chave, valor in os.environ.items()
+        if not chave.startswith("FLET_")
+    }
+    destino_log = os.getenv("FLET_APP_STORAGE_DATA") or str(dir_instalacao)
+    log = open(os.path.join(destino_log, "reinicio.log"), "wb")
     subprocess.Popen(
-        ["/bin/sh", "-c", f'sleep 1; exec "{exe}"'],
+        ["/bin/sh", "-c", f'sleep 2; exec "{exe}"'],
         cwd=str(dir_instalacao),
         start_new_session=True,
+        env=ambiente,
+        stdout=log,
+        stderr=log,
     )
     os._exit(0)
