@@ -47,7 +47,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.8.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.8.1"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -920,7 +920,8 @@ def main(page: ft.Page):
             return
         finally:
             sync_rodando["valor"] = False
-        if resultado["recebidas"]:
+        # não puxa o tapete de quem está no meio de um formulário
+        if resultado["recebidas"] and filtro["modo"] not in ("nova", "editar"):
             render_tarefas()
         if manual:
             avisar(
@@ -934,6 +935,49 @@ def main(page: ft.Page):
         await page.close_drawer()
         avisar("Sincronizando…")
         await executar_sync(manual=True)
+
+    # Toda mudança local agenda um envio (2s de espera agrupam mudanças em
+    # sequência). O embrulho pega TODOS os mutadores do db de uma vez, pra
+    # nenhum handler novo esquecer de avisar o sync
+    sync_agendado = {"seq": 0}
+
+    def agendar_sync():
+        sync_agendado["seq"] += 1
+        seq = sync_agendado["seq"]
+
+        async def depois():
+            await asyncio.sleep(2)
+            if sync_agendado["seq"] == seq:
+                await executar_sync(manual=False)
+
+        if sync.carregar_config():
+            page.run_task(depois)
+
+    def _com_sync(funcao):
+        def envelopada(*args, **kwargs):
+            resultado = funcao(*args, **kwargs)
+            agendar_sync()
+            return resultado
+
+        return envelopada
+
+    for _nome in (
+        "adicionar_tarefa",
+        "atualizar_tarefa",
+        "marcar_concluida",
+        "salvar_descricao_conclusao",
+        "excluir_tarefa",
+        "restaurar_tarefa",
+        "adicionar_subtarefa",
+        "marcar_subtarefa",
+        "excluir_subtarefa",
+        "criar_lista",
+        "renomear_lista",
+        "excluir_lista",
+        "importar_json",
+        "importar_db_bytes",
+    ):
+        setattr(db, _nome, _com_sync(getattr(db, _nome)))
 
     async def abrir_config_sync(e):
         await page.close_drawer()
@@ -1586,11 +1630,18 @@ def main(page: ft.Page):
 
     render_tarefas()
 
-    # Sync silencioso na abertura (só faz algo se estiver configurado)
+    # Sync silencioso na abertura e a cada minuto com o app aberto (quem
+    # recebe fica fresco sem depender de botão; só age se configurado)
     async def sync_inicial():
         await executar_sync(manual=False)
 
+    async def sync_periodico():
+        while True:
+            await asyncio.sleep(60)
+            await executar_sync(manual=False)
+
     page.run_task(sync_inicial)
+    page.run_task(sync_periodico)
 
 
 ft.run(main)

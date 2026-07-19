@@ -258,10 +258,13 @@ a atualização por cima.
       carimbos + lápides + backup schema 2) e motor completo, validado de
       ponta a ponta contra o Supabase real com dois dispositivos
       simulados (conflito resolvido pelo carimbo maior, exclusão sem
-      ressurreição, rename de lista propagando). Sync silencioso ao abrir
-      + botão "Sincronizar agora". Sem segundo plano: só sincroniza com o
-      app aberto (sinergia futura com as notificações nativas). Detalhes
-      da arquitetura na seção "Decisões do projeto"
+      ressurreição, rename de lista propagando). Sync silencioso ao
+      abrir, após cada mudança (mutadores do db embrulhados no main com
+      debounce de 2s; v1.8.1, depois do bug real: concluir num aparelho
+      não chegava no outro porque só sincronizava na abertura) e a cada
+      60s com o app aberto, além do botão "Sincronizar agora". Sem
+      segundo plano: app fechado não sincroniza (sinergia futura com as
+      notificações nativas). Arquitetura na seção "Decisões do projeto"
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)
