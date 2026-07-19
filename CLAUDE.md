@@ -264,7 +264,9 @@ a atualização por cima.
       não chegava no outro porque só sincronizava na abertura) e a cada
       60s com o app aberto, além do botão "Sincronizar agora". Sem
       segundo plano: app fechado não sincroniza (sinergia futura com as
-      notificações nativas). Arquitetura na seção "Decisões do projeto"
+      notificações nativas). Arquitetura na seção "Decisões do projeto".
+      VALIDADO PELO USUÁRIO NOS APARELHOS REAIS em 18/07/2026 (celular +
+      PC na v1.8.1): "funcionou de boas"
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)
