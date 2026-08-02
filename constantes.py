@@ -17,7 +17,7 @@ REPETICOES = {
 }
 NOMES_REPETICAO = {v: k for k, v in REPETICOES.items()}
 
-MAX_SUBTAREFAS = 10
+MAX_SUBTAREFAS = 20
 
 # Desktop: o app vive numa coluna central de largura limitada (mesma cara
 # do celular); a janela abre em proporção de celular e tem tamanho mínimo

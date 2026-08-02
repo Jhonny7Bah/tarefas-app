@@ -781,12 +781,36 @@ def _documento_tarefa(con, t):
 
 
 def indice_sync():
-    """{uuid: modificado_em} locais, pro merge decidir quem é mais novo."""
+    """{uuid: (modificado_em, pendente)} locais, pro merge do sync."""
     con = sqlite3.connect(DB)
-    tarefas = dict(con.execute("SELECT uuid, modificado_em FROM tarefas"))
-    listas = dict(con.execute("SELECT uuid, modificado_em FROM listas"))
+    tarefas = {
+        r[0]: (r[1], bool(r[2]))
+        for r in con.execute("SELECT uuid, modificado_em, sync_pendente FROM tarefas")
+    }
+    listas = {
+        r[0]: (r[1], bool(r[2]))
+        for r in con.execute("SELECT uuid, modificado_em, sync_pendente FROM listas")
+    }
     con.close()
     return {"tarefas": tarefas, "listas": listas}
+
+
+def adiantar_carimbo(tipo, uid, novo_carimbo):
+    """Puxa o carimbo de uma linha pendente pra frente do carimbo remoto.
+
+    Usado quando o servidor tem carimbo "do futuro" (relógio de outro
+    aparelho adiantado): a mudança local não enviada é o evento real mais
+    recente, então ela ganha um carimbo que vence em todos os aparelhos.
+    """
+    tabela = "tarefas" if tipo == "tarefa" else "listas"
+    con = sqlite3.connect(DB)
+    con.execute(
+        f"UPDATE {tabela} SET modificado_em = ? WHERE uuid = ?"  # noqa: S608
+        " AND sync_pendente = 1",
+        (novo_carimbo, uid),
+    )
+    con.commit()
+    con.close()
 
 
 def pendentes_de_envio():
@@ -838,15 +862,21 @@ def limpar_lapides(uids):
     con.close()
 
 
-def marcar_enviadas(uuids_tarefas, uuids_listas):
+def marcar_enviadas(pares_tarefas, pares_listas):
+    """Limpa a pendência do que foi enviado; recebe pares (uuid, carimbo).
+
+    O carimbo entra no WHERE de propósito: se a linha mudou DURANTE o
+    envio, o carimbo não bate mais e a flag fica de pé pra próxima rodada
+    (senão a mudança feita no meio do sync nunca seria enviada).
+    """
     con = sqlite3.connect(DB)
     con.executemany(
-        "UPDATE tarefas SET sync_pendente = 0 WHERE uuid = ?",
-        [(u,) for u in uuids_tarefas],
+        "UPDATE tarefas SET sync_pendente = 0 WHERE uuid = ? AND modificado_em = ?",
+        list(pares_tarefas),
     )
     con.executemany(
-        "UPDATE listas SET sync_pendente = 0 WHERE uuid = ?",
-        [(u,) for u in uuids_listas],
+        "UPDATE listas SET sync_pendente = 0 WHERE uuid = ? AND modificado_em = ?",
+        list(pares_listas),
     )
     con.commit()
     con.close()

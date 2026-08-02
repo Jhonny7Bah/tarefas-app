@@ -35,8 +35,10 @@ flet run --web main.py                   # navegador
 flet build apk --split-per-abi  # APKs Android (o flet baixa o próprio Flutter;
                                 #  precisa de ANDROID_HOME=/opt/android-sdk e JDK 17)
 CFLAGS="-Wno-macro-redefined" CXXFLAGS="-Wno-macro-redefined" flet build linux
-    # Executável desktop (build/linux/tarefas; dados em
-    # ~/.local/share/dev.jhon7bah.tarefas). As flags são OBRIGATÓRIAS: o
+    # Executável desktop (build/linux/tarefas; DADOS em ~/flet/tarefas
+    # (banco + sync.json); descoberto em 02/08/2026 investigando no
+    # aparelho real. ~/.local/share/dev.jhon7bah.tarefas guarda só o
+    # CÓDIGO extraído do app.zip). As flags são OBRIGATÓRIAS: o
     # runner do Flutter compila com -Werror e os headers do Python do
     # serious_python redefinem _POSIX_C_SOURCE/_XOPEN_SOURCE (clang novo
     # promove a erro). Precisa de clang, cmake e ninja. Pra forçar rebuild
@@ -190,7 +192,8 @@ a atualização por cima.
 - [x] Editar/apagar tarefa (e apagar concluídas)
 - [x] Editar/apagar lista (tela "Gerenciar listas"; Padrão protegida)
 - [x] Busca (pendentes + concluídas, inclui descrição de conclusão)
-- [x] Subtarefas (máx. 10 por tarefa, com timestamps)
+- [x] Subtarefas (com timestamps; máx. 10, elevado pra 20 na v1.8.2 a
+      pedido do usuário, que bateu o teto)
 - [x] Tarefa em mais de uma lista (N:N, tabela tarefa_listas)
 - [x] "Repetir" inteligente (próxima ocorrência aparece 1 dia antes do prazo)
 - [x] Timestamps de criação/conclusão visíveis na folha de edição
@@ -270,6 +273,24 @@ a atualização por cima.
       notificações nativas). Arquitetura na seção "Decisões do projeto".
       VALIDADO PELO USUÁRIO NOS APARELHOS REAIS em 18/07/2026 (celular +
       PC na v1.8.1): "funcionou de boas"
+- [x] Bug da ressurreição RESOLVIDO (v1.8.2, 02/08/2026): tarefa
+      concluída voltava a pendente segundos depois ("salvar" que exigia
+      martelar era o mesmo bug). Causa: relógios dos aparelhos desviados
+      (PC medido 14s à frente do servidor) + o pull rodar antes do push;
+      um carimbo remoto "do futuro" atropelava a mudança local recém-
+      feita antes dela ser enviada. Regra nova no merge: MUDANÇA LOCAL
+      PENDENTE É SAGRADA; o pull nunca a sobrescreve, só adianta o
+      carimbo dela pra 1s além do remoto (vence em todo lugar). Bônus:
+      marcar_enviadas só limpa a flag se o carimbo não mudou durante o
+      envio. Testes com servidor falso em memória (monkeypatch no
+      _req) pra nunca tocar em produção
+- [ ] Da lista do usuário (tarefa "Atualizações no App" no próprio app,
+      02/08/2026): concluir por dentro da tarefa aberta, botão de criar
+      atrapalhando exclusão da última lista, filtro de listas que exige
+      dois toques, visualização de listas na criação, subtarefas no ato
+      de criação, backup estilo checkpoint
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
-      nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent)
+      nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent).
+      Também resolve o item do usuário "download polui a memória do
+      celular a cada atualização"

@@ -11,10 +11,26 @@ de dados do dispositivo, preenchido pela tela de configuração.
 import json
 import os
 import urllib.request
+from datetime import datetime, timedelta
 
 import db
 
 ARQ_CONFIG = os.path.join(os.path.dirname(db.DB), "sync.json")
+
+
+def _carimbo_vencedor(carimbo_remoto, carimbo_local):
+    """Carimbo que garante vitória sobre o remoto: 1s à frente dele.
+
+    Relógios de aparelhos diferentes desviam; quando o remoto está "no
+    futuro", a mudança local pendente (o evento real mais recente) precisa
+    de um carimbo maior pra não ser atropelada nem aqui nem nos outros.
+    """
+    try:
+        vencedor = datetime.fromisoformat(carimbo_remoto) + timedelta(seconds=1)
+        vencedor = vencedor.isoformat(sep=" ", timespec="seconds")
+    except ValueError:
+        return carimbo_local
+    return max(vencedor, carimbo_local)
 
 
 def carregar_config():
@@ -82,15 +98,23 @@ def sincronizar(cfg):
     local = db.indice_sync()
     recebidas = 0
 
-    # ---- puxar: listas primeiro (tarefas referenciam listas pelo nome)
+    # ---- puxar: listas primeiro (tarefas referenciam listas pelo nome).
+    # Regra de ouro do merge: mudança local AINDA NÃO ENVIADA é sagrada.
+    # O pull nunca a atropela; no máximo adianta o carimbo dela pra vencer
+    # o remoto "do futuro" (relógio de outro aparelho adiantado) no push
     for caminho, tipo in (("listas", "lista"), ("tarefas", "tarefa")):
         indice = local[caminho]
         for r in _req(cfg, "GET", f"{caminho}?select=*") or []:
             uid, carimbo = r["uuid"], r["modificado_em"]
+            meu = indice.get(uid)
             if r["excluida"]:
                 # o servidor diz que morreu; some daqui se não mexemos depois
-                meu = indice.get(uid)
-                if meu is not None and meu <= carimbo:
+                if meu is not None and meu[0] <= carimbo:
+                    if meu[1]:  # pendente local: sobrevive e revive no push
+                        db.adiantar_carimbo(
+                            tipo, uid, _carimbo_vencedor(carimbo, meu[0])
+                        )
+                        continue
                     db.excluir_remoto(tipo, uid)
                     recebidas += 1
                 continue
@@ -100,8 +124,10 @@ def sincronizar(cfg):
                     continue  # nossa exclusão é mais nova: vence no envio
                 db.remover_lapide(uid)  # reviveu no servidor depois de morrer
                 del lapides[uid]
-            meu = indice.get(uid)
-            if meu is None or meu < carimbo:
+            if meu is None or meu[0] < carimbo:
+                if meu is not None and meu[1]:  # pendente local: sagrada
+                    db.adiantar_carimbo(tipo, uid, _carimbo_vencedor(carimbo, meu[0]))
+                    continue
                 if tipo == "lista":
                     db.aplicar_lista_remota(uid, r["dados"], carimbo)
                 else:
@@ -133,8 +159,8 @@ def sincronizar(cfg):
             ],
         )
     db.marcar_enviadas(
-        [doc["uuid"] for doc in pendentes["tarefas"]],
-        [doc["uuid"] for doc in pendentes["listas"]],
+        [(doc["uuid"], doc["modificado_em"]) for doc in pendentes["tarefas"]],
+        [(doc["uuid"], doc["modificado_em"]) for doc in pendentes["listas"]],
     )
     db.limpar_lapides(list(lapides))
     enviadas = len(pendentes["tarefas"]) + len(pendentes["listas"]) + len(lapides)
