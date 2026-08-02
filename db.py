@@ -308,8 +308,17 @@ def contar_por_lista_total():
     return linhas
 
 
+# Oculta CONTAMINA (regra pedida pelo usuário em 02/08/2026): basta a
+# tarefa pertencer a UMA lista oculta pra sumir do "Todas" e dos filtros
+# de listas visíveis. Ela só aparece filtrando a própria lista oculta
+_TEM_LISTA_OCULTA = """EXISTS (
+    SELECT 1 FROM tarefa_listas tl JOIN listas l ON l.nome = tl.lista
+    WHERE tl.tarefa_id = t.id AND l.oculta = 1
+)"""
+
+
 def listar_pendentes(lista=None):
-    """Pendentes de uma lista, ou de todas (excluindo listas ocultas)."""
+    """Pendentes de uma lista, ou de todas (oculta contamina a tarefa)."""
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
     base = f"""
@@ -320,22 +329,17 @@ def listar_pendentes(lista=None):
         ORDER BY t.prioridade DESC, (t.prazo IS NULL), t.prazo ASC, t.id DESC
     """
     if lista is None:
-        # "Todas": aparece se estiver em pelo menos uma lista não oculta
-        q = base.format(
-            filtro="""AND EXISTS (
-                SELECT 1 FROM tarefa_listas tl JOIN listas l ON l.nome = tl.lista
-                WHERE tl.tarefa_id = t.id AND l.oculta = 0
-            )"""
-        )
+        q = base.format(filtro=f"AND NOT {_TEM_LISTA_OCULTA}")
         linhas = con.execute(q).fetchall()
     else:
+        # na lista oculta mostra tudo dela; na visível, só as não contaminadas
         q = base.format(
-            filtro=(
-                "AND EXISTS (SELECT 1 FROM tarefa_listas"
-                " WHERE tarefa_id = t.id AND lista = ?)"
-            )
+            filtro=f"""AND EXISTS (SELECT 1 FROM tarefa_listas
+                WHERE tarefa_id = t.id AND lista = ?)
+              AND ((SELECT oculta FROM listas WHERE nome = ?) = 1
+                   OR NOT {_TEM_LISTA_OCULTA})"""
         )
-        linhas = con.execute(q, (lista,)).fetchall()
+        linhas = con.execute(q, (lista, lista)).fetchall()
     con.close()
     return linhas
 
@@ -394,28 +398,31 @@ def salvar_descricao_conclusao(tid, texto):
 
 
 def contagens():
-    """Contadores pra gaveta: pendentes por lista, total 'Todas' e concluídas."""
+    """Contadores pra gaveta: pendentes por lista, total 'Todas' e concluídas.
+
+    Acompanham a regra da contaminação: lista visível não conta tarefa
+    que também esteja em lista oculta; a própria oculta conta tudo dela.
+    """
     con = sqlite3.connect(DB)
     por_lista = dict(
         con.execute(
-            """
+            f"""
             SELECT tl.lista, COUNT(*) FROM tarefa_listas tl
+            JOIN listas lst ON lst.nome = tl.lista
             JOIN tarefas t ON t.id = tl.tarefa_id
             WHERE t.concluida = 0
               AND (t.aparece_em IS NULL OR t.aparece_em <= datetime('now','localtime'))
+              AND (lst.oculta = 1 OR NOT {_TEM_LISTA_OCULTA})
             GROUP BY tl.lista
             """
         ).fetchall()
     )
     todas = con.execute(
-        """
+        f"""
         SELECT COUNT(*) FROM tarefas t
         WHERE t.concluida = 0
           AND (t.aparece_em IS NULL OR t.aparece_em <= datetime('now','localtime'))
-          AND EXISTS (
-              SELECT 1 FROM tarefa_listas tl JOIN listas l ON l.nome = tl.lista
-              WHERE tl.tarefa_id = t.id AND l.oculta = 0
-          )
+          AND NOT {_TEM_LISTA_OCULTA}
         """
     ).fetchone()[0]
     concluidas = con.execute(
