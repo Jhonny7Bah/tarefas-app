@@ -47,7 +47,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.9.0"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.9.1"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -224,6 +224,9 @@ def main(page: ft.Page):
             return
         if filtro["modo"] == "config":
             render_config()
+            return
+        if filtro["modo"] == "backups":
+            render_backups()
             return
         if filtro["modo"] == "busca":
             render_busca()
@@ -1126,12 +1129,6 @@ def main(page: ft.Page):
     # --- Tela de Configurações (backup na nuvem + utilidades da gaveta) -----
     coluna_backups_nuvem = ft.Column(spacing=0)
 
-    def titulo_secao(texto):
-        return ft.Container(
-            ft.Text(texto, size=12, color=COR_TEXTO_SUAVE),
-            padding=ft.Padding(left=16, top=18, right=16, bottom=4),
-        )
-
     async def salvar_na_nuvem(e):
         cfg = sync.carregar_config()
         if not cfg:
@@ -1250,43 +1247,102 @@ def main(page: ft.Page):
         ]
         page.update()
 
+    def abrir_backups(e):
+        filtro["modo"] = "backups"
+        render_tarefas()
+
+    def cartao_secao(titulo, controles):
+        """Seção emoldurada como card, na mesma gramática visual das tarefas."""
+        return ft.Container(
+            ft.Column(
+                [
+                    ft.Container(
+                        ft.Text(titulo, size=12, color=COR_TEXTO_SUAVE),
+                        padding=ft.Padding(left=10, top=2, right=10, bottom=2),
+                    ),
+                    *controles,
+                ],
+                spacing=2,
+            ),
+            bgcolor=COR_CARD,
+            border_radius=16,
+            padding=ft.Padding(left=6, top=10, right=6, bottom=8),
+        )
+
     def render_config():
         fab.visible = False
         subtitulo_appbar.value = "Configurações"
         lista_tarefas.controls = [
-            titulo_secao("BACKUP NA NUVEM"),
+            cartao_secao(
+                "BACKUP NA NUVEM",
+                [
+                    ft.Container(
+                        botao_cheio(
+                            "Salvar backup na nuvem",
+                            salvar_na_nuvem,
+                            icone=ft.Icons.CLOUD_UPLOAD,
+                        ),
+                        padding=ft.Padding(left=10, top=4, right=10, bottom=2),
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.PHOTO_LIBRARY_OUTLINED),
+                        title=ft.Text("Visualizar backups"),
+                        on_click=abrir_backups,
+                    ),
+                ],
+            ),
+            cartao_secao(
+                "BACKUP LOCAL",
+                [
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.UPLOAD_FILE),
+                        title=ft.Text("Exportar backup"),
+                        on_click=abrir_exportar,
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE),
+                        title=ft.Text("Restaurar backup"),
+                        on_click=abrir_restaurar,
+                    ),
+                ],
+            ),
+            cartao_secao(
+                "SINCRONIZAÇÃO",
+                [
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.CLOUD_OUTLINED),
+                        title=ft.Text("Configurar sincronização"),
+                        on_click=abrir_config_sync,
+                    ),
+                ],
+            ),
+            cartao_secao(
+                "APLICATIVO",
+                [
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.SYSTEM_UPDATE_ALT),
+                        title=ft.Text("Verificar atualização"),
+                        on_click=verificar_atualizacao,
+                    ),
+                ],
+            ),
+        ]
+        page.update()
+
+    def render_backups():
+        fab.visible = False
+        subtitulo_appbar.value = "Backups na nuvem"
+        lista_tarefas.controls = [
             ft.Container(
-                botao_cheio(
-                    "Salvar backup na nuvem",
-                    salvar_na_nuvem,
-                    icone=ft.Icons.CLOUD_UPLOAD,
+                ft.Text(
+                    "Toca numa foto pra restaurar aquele momento em todos os "
+                    "seus aparelhos.",
+                    size=13,
+                    color=COR_TEXTO_SUAVE,
                 ),
-                padding=ft.Padding(left=16, top=4, right=16, bottom=4),
+                padding=ft.Padding(left=16, top=8, right=16, bottom=4),
             ),
             coluna_backups_nuvem,
-            titulo_secao("BACKUP LOCAL"),
-            ft.ListTile(
-                leading=ft.Icon(ft.Icons.UPLOAD_FILE),
-                title=ft.Text("Exportar backup"),
-                on_click=abrir_exportar,
-            ),
-            ft.ListTile(
-                leading=ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE),
-                title=ft.Text("Restaurar backup"),
-                on_click=abrir_restaurar,
-            ),
-            titulo_secao("SINCRONIZAÇÃO"),
-            ft.ListTile(
-                leading=ft.Icon(ft.Icons.CLOUD_OUTLINED),
-                title=ft.Text("Configurar sincronização"),
-                on_click=abrir_config_sync,
-            ),
-            titulo_secao("APLICATIVO"),
-            ft.ListTile(
-                leading=ft.Icon(ft.Icons.SYSTEM_UPDATE_ALT),
-                title=ft.Text("Verificar atualização"),
-                on_click=verificar_atualizacao,
-            ),
         ]
         coluna_backups_nuvem.controls = [
             ft.Container(
@@ -1747,6 +1803,9 @@ def main(page: ft.Page):
             await page.close_drawer()
         elif filtro["modo"] in ("nova", "editar"):
             await voltar_para_lista()
+        elif filtro["modo"] == "backups":
+            filtro["modo"] = "config"  # backups é filha das Configurações
+            render_tarefas()
         elif filtro["modo"] != "pendentes":
             filtro["modo"] = "pendentes"
             render_tarefas()
