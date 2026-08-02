@@ -47,7 +47,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.8.2"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.9.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -85,6 +85,8 @@ def main(page: ft.Page):
         page.window.height = JANELA_ALTURA
         page.window.min_width = JANELA_LARGURA_MIN
         page.window.min_height = JANELA_ALTURA_MIN
+    # etiqueta as fotos de backup na nuvem com o aparelho de origem
+    rotulo_dispositivo = "computador" if eh_desktop else "celular"
 
     # A rolagem fica na vista externa; o recuo à direita impede a barra de
     # rolagem de cobrir a borda dos cards
@@ -219,6 +221,9 @@ def main(page: ft.Page):
             return
         if filtro["modo"] == "listas":
             render_listas()
+            return
+        if filtro["modo"] == "config":
+            render_config()
             return
         if filtro["modo"] == "busca":
             render_busca()
@@ -673,6 +678,11 @@ def main(page: ft.Page):
             await page.close_drawer()
             render_tarefas()
 
+        async def ir_config(e):
+            filtro["modo"] = "config"
+            await page.close_drawer()
+            render_tarefas()
+
         itens = [
             ft.Container(
                 ft.Text("MINHAS LISTAS", size=12, color=COR_TEXTO_SUAVE),
@@ -721,30 +731,15 @@ def main(page: ft.Page):
                 on_click=ir_listas,
             ),
             ft.ListTile(
-                leading=ft.Icon(ft.Icons.UPLOAD_FILE),
-                title=ft.Text("Exportar backup"),
-                on_click=abrir_exportar,
-            ),
-            ft.ListTile(
-                leading=ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE),
-                title=ft.Text("Restaurar backup"),
-                on_click=abrir_restaurar,
-            ),
-            ft.ListTile(
                 leading=ft.Icon(ft.Icons.CLOUD_SYNC_OUTLINED),
                 title=ft.Text("Sincronizar agora"),
                 visible=sync.carregar_config() is not None,
                 on_click=sincronizar_agora,
             ),
             ft.ListTile(
-                leading=ft.Icon(ft.Icons.CLOUD_OUTLINED),
-                title=ft.Text("Configurar sincronização"),
-                on_click=abrir_config_sync,
-            ),
-            ft.ListTile(
-                leading=ft.Icon(ft.Icons.SYSTEM_UPDATE_ALT),
-                title=ft.Text("Verificar atualização"),
-                on_click=verificar_atualizacao,
+                leading=ft.Icon(ft.Icons.SETTINGS_OUTLINED),
+                title=ft.Text("Configurações"),
+                on_click=ir_config,
             ),
             ft.Divider(),
             ft.Container(
@@ -1087,6 +1082,19 @@ def main(page: ft.Page):
         if not dados:
             avisar("Não consegui ler o arquivo escolhido.")
             return
+        # foto de segurança na nuvem antes de sobrescrever (quando tem sync)
+        cfg = sync.carregar_config()
+        if cfg:
+            try:
+                await asyncio.to_thread(
+                    sync.salvar_backup_nuvem,
+                    cfg,
+                    db.exportar_json(),
+                    f"{rotulo_dispositivo} · automático",
+                )
+            except Exception:
+                pass  # sem internet a restauração local segue mesmo assim
+        antes = db.uuids_atuais()
         try:
             if dados.startswith(b"SQLite format 3\x00"):
                 total = db.importar_db_bytes(dados)
@@ -1095,6 +1103,8 @@ def main(page: ft.Page):
         except (ValueError, UnicodeDecodeError) as erro:
             avisar(str(erro))
             return
+        # restauração vira o estado oficial: propaga pros outros aparelhos
+        db.virar_estado_novo(antes)
         filtro["lista"] = None
         filtro["modo"] = "pendentes"
         render_tarefas()
@@ -1112,6 +1122,180 @@ def main(page: ft.Page):
         ],
         bgcolor=COR_FUNDO,
     )
+
+    # --- Tela de Configurações (backup na nuvem + utilidades da gaveta) -----
+    coluna_backups_nuvem = ft.Column(spacing=0)
+
+    def titulo_secao(texto):
+        return ft.Container(
+            ft.Text(texto, size=12, color=COR_TEXTO_SUAVE),
+            padding=ft.Padding(left=16, top=18, right=16, bottom=4),
+        )
+
+    async def salvar_na_nuvem(e):
+        cfg = sync.carregar_config()
+        if not cfg:
+            avisar("Configura a sincronização primeiro.")
+            return
+        avisar("Salvando backup na nuvem…")
+        try:
+            await asyncio.to_thread(
+                sync.salvar_backup_nuvem, cfg, db.exportar_json(), rotulo_dispositivo
+            )
+        except Exception:
+            avisar("Não deu pra salvar. Sem internet?")
+            return
+        avisar("Backup salvo na nuvem!")
+        await carregar_backups_nuvem()
+
+    async def restaurar_da_nuvem(e):
+        backup_id = dialogo_restaurar_nuvem.data
+        page.pop_dialog()
+        cfg = sync.carregar_config()
+        if not cfg:
+            return
+        avisar("Restaurando da nuvem…")
+        try:
+            conteudo = await asyncio.to_thread(sync.baixar_backup_nuvem, cfg, backup_id)
+            # foto de segurança do estado atual antes de sobrescrever
+            await asyncio.to_thread(
+                sync.salvar_backup_nuvem,
+                cfg,
+                db.exportar_json(),
+                f"{rotulo_dispositivo} · automático",
+            )
+            antes = db.uuids_atuais()
+            total = db.importar_json(conteudo)
+            db.virar_estado_novo(antes)
+        except Exception:
+            avisar("A restauração falhou. Tenta de novo mais tarde.")
+            return
+        filtro["lista"] = None
+        filtro["modo"] = "pendentes"
+        render_tarefas()
+        avisar(f"Backup restaurado: {total} tarefas.")
+
+    dialogo_restaurar_nuvem = ft.AlertDialog(
+        title=ft.Text("Restaurar da nuvem?"),
+        content=ft.Text(
+            "Os dados atuais serão SUBSTITUÍDOS pelos da foto escolhida, "
+            "e a restauração vale pra todos os seus aparelhos no próximo "
+            "sincronismo. Uma foto do estado atual é salva antes, por segurança."
+        ),
+        actions=[
+            botao_texto("Cancelar", lambda e: page.pop_dialog()),
+            botao_cheio("Restaurar", restaurar_da_nuvem),
+        ],
+        bgcolor=COR_FUNDO,
+    )
+
+    def abrir_confirmacao_nuvem(e, backup_id):
+        dialogo_restaurar_nuvem.data = backup_id
+        page.show_dialog(dialogo_restaurar_nuvem)
+
+    async def carregar_backups_nuvem():
+        cfg = sync.carregar_config()
+        if not cfg:
+            coluna_backups_nuvem.controls = [
+                ft.Container(
+                    ft.Text(
+                        "Configura a sincronização pra guardar fotos dos seus "
+                        "dados na nuvem.",
+                        size=13,
+                        color=COR_TEXTO_SUAVE,
+                    ),
+                    padding=ft.Padding(left=16, top=4, right=16, bottom=4),
+                )
+            ]
+            page.update()
+            return
+        try:
+            fotos = await asyncio.to_thread(sync.listar_backups_nuvem, cfg)
+        except Exception:
+            coluna_backups_nuvem.controls = [
+                ft.Container(
+                    ft.Text(
+                        "Não deu pra listar as fotos. Sem internet?",
+                        size=13,
+                        color=COR_TEXTO_SUAVE,
+                    ),
+                    padding=ft.Padding(left=16, top=4, right=16, bottom=4),
+                )
+            ]
+            page.update()
+            return
+        itens: list[ft.Control] = []
+        for foto in fotos:
+
+            def ao_tocar(e, backup_id=foto["id"]):
+                abrir_confirmacao_nuvem(e, backup_id)
+
+            itens.append(
+                ft.ListTile(
+                    leading=ft.Icon(ft.Icons.CLOUD_DONE_OUTLINED),
+                    title=ft.Text(db.formatar_prazo(foto["criado_em"])),
+                    subtitle=ft.Text(
+                        f"pelo {foto['dispositivo']}",
+                        size=12,
+                        color=COR_TEXTO_SUAVE,
+                    ),
+                    on_click=ao_tocar,
+                )
+            )
+        coluna_backups_nuvem.controls = itens or [
+            ft.Container(
+                ft.Text("Nenhuma foto na nuvem ainda.", size=13, color=COR_TEXTO_SUAVE),
+                padding=ft.Padding(left=16, top=4, right=16, bottom=4),
+            )
+        ]
+        page.update()
+
+    def render_config():
+        fab.visible = False
+        subtitulo_appbar.value = "Configurações"
+        lista_tarefas.controls = [
+            titulo_secao("BACKUP NA NUVEM"),
+            ft.Container(
+                botao_cheio(
+                    "Salvar backup na nuvem",
+                    salvar_na_nuvem,
+                    icone=ft.Icons.CLOUD_UPLOAD,
+                ),
+                padding=ft.Padding(left=16, top=4, right=16, bottom=4),
+            ),
+            coluna_backups_nuvem,
+            titulo_secao("BACKUP LOCAL"),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.UPLOAD_FILE),
+                title=ft.Text("Exportar backup"),
+                on_click=abrir_exportar,
+            ),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.SETTINGS_BACKUP_RESTORE),
+                title=ft.Text("Restaurar backup"),
+                on_click=abrir_restaurar,
+            ),
+            titulo_secao("SINCRONIZAÇÃO"),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.CLOUD_OUTLINED),
+                title=ft.Text("Configurar sincronização"),
+                on_click=abrir_config_sync,
+            ),
+            titulo_secao("APLICATIVO"),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.SYSTEM_UPDATE_ALT),
+                title=ft.Text("Verificar atualização"),
+                on_click=verificar_atualizacao,
+            ),
+        ]
+        coluna_backups_nuvem.controls = [
+            ft.Container(
+                ft.Text("Carregando fotos…", size=13, color=COR_TEXTO_SUAVE),
+                padding=ft.Padding(left=16, top=4, right=16, bottom=4),
+            )
+        ]
+        page.update()
+        page.run_task(carregar_backups_nuvem)
 
     # --- Diálogo de nova lista --------------------------------------------
     campo_nome_lista = ft.TextField(

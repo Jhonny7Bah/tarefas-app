@@ -284,11 +284,23 @@ a atualização por cima.
       marcar_enviadas só limpa a flag se o carimbo não mudou durante o
       envio. Testes com servidor falso em memória (monkeypatch no
       _req) pra nunca tocar em produção
+- [x] Lista oculta CONTAMINA (v1.9.0, 02/08/2026, regra pedida pelo
+      usuário): tarefa em UMA lista oculta some do Todas e dos filtros
+      visíveis; só aparece filtrando a própria oculta. Busca e Concluídas
+      continuam achando tudo. Contadores acompanham
+- [x] Backup na nuvem estilo checkpoint (v1.9.0): tela de Configurações
+      nova (página inteira, gaveta emagreceu) com foto manual dos dados
+      na tabela backups do Supabase (retenção 20), lista de fotos e
+      restauração com foto de segurança automática antes. RESTAURAR É
+      ROLLBACK NOS 3: virar_estado_novo recarimba tudo com agora e deixa
+      lápides pro que não está na foto, então a volta no tempo se propaga
+      pra todos os aparelhos via sync (decisão explícita do usuário)
 - [ ] Da lista do usuário (tarefa "Atualizações no App" no próprio app,
       02/08/2026): concluir por dentro da tarefa aberta, botão de criar
       atrapalhando exclusão da última lista, filtro de listas que exige
       dois toques, visualização de listas na criação, subtarefas no ato
-      de criação, backup estilo checkpoint
+      de criação. PRÓXIMO COMBINADO: atualização estilo Snaptube no
+      Android (item d do usuário)
 - [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
       download e instalação dentro do app, sem navegador — exige extensão
       nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent).

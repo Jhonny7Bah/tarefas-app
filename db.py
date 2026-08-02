@@ -1163,6 +1163,41 @@ def importar_json(texto):
     return len(dados.get("tarefas", []))
 
 
+def uuids_atuais():
+    """Conjuntos de uuids vivos agora; tirado ANTES de uma restauração."""
+    con = sqlite3.connect(DB)
+    tarefas = {r[0] for r in con.execute("SELECT uuid FROM tarefas")}
+    listas = {r[0] for r in con.execute("SELECT uuid FROM listas")}
+    con.close()
+    return {"tarefas": tarefas, "listas": listas}
+
+
+def virar_estado_novo(uuids_antes):
+    """Transforma o banco recém-restaurado no NOVO estado oficial do sync.
+
+    Recarimba tudo com agora (a restauração é um evento novo: vence os
+    carimbos de todos os aparelhos) e deixa lápides pra o que existia
+    antes e não está na foto, pra exclusão também se propagar. É o que
+    faz "voltar no tempo" valer nos 3 lugares, não só aqui.
+    """
+    con = sqlite3.connect(DB)
+    con.execute(f"UPDATE tarefas SET modificado_em = {_AGORA}, sync_pendente = 1")
+    con.execute(f"UPDATE listas SET modificado_em = {_AGORA}, sync_pendente = 1")
+    agora_uuids = {
+        "tarefas": {r[0] for r in con.execute("SELECT uuid FROM tarefas")},
+        "listas": {r[0] for r in con.execute("SELECT uuid FROM listas")},
+    }
+    for chave, tipo in (("tarefas", "tarefa"), ("listas", "lista")):
+        for uid in uuids_antes[chave] - agora_uuids[chave]:
+            con.execute(
+                f"INSERT OR REPLACE INTO exclusoes (uuid, tipo, excluido_em)"
+                f" VALUES (?, ?, {_AGORA})",
+                (uid, tipo),
+            )
+    con.commit()
+    con.close()
+
+
 def exportar_db_bytes():
     """Cópia fiel do arquivo do banco, pra backup binário."""
     with open(DB, "rb") as arquivo:

@@ -89,6 +89,51 @@ def _upsert(cfg, caminho, linhas):
         )
 
 
+MAX_BACKUPS_NUVEM = 20
+
+
+def salvar_backup_nuvem(cfg, conteudo_json, dispositivo):
+    """Sobe uma foto completa dos dados pra tabela backups e poda antigas."""
+    agora = datetime.now().isoformat(sep=" ", timespec="seconds")
+    _req(
+        cfg,
+        "POST",
+        "backups",
+        corpo=[
+            {
+                "criado_em": agora,
+                "dispositivo": dispositivo,
+                "conteudo": json.loads(conteudo_json),
+            }
+        ],
+    )
+    # retenção: além das MAX_BACKUPS_NUVEM mais novas, o resto morre
+    linhas = _req(cfg, "GET", "backups?select=id&order=criado_em.desc") or []
+    excedentes = [str(r["id"]) for r in linhas[MAX_BACKUPS_NUVEM:]]
+    if excedentes:
+        _req(cfg, "DELETE", f"backups?id=in.({','.join(excedentes)})")
+
+
+def listar_backups_nuvem(cfg):
+    """Fotos disponíveis, mais novas primeiro (sem o conteúdo, que pesa)."""
+    return (
+        _req(
+            cfg,
+            "GET",
+            "backups?select=id,criado_em,dispositivo&order=criado_em.desc",
+        )
+        or []
+    )
+
+
+def baixar_backup_nuvem(cfg, backup_id):
+    """Conteúdo de uma foto, como texto JSON pro importar_json."""
+    linhas = _req(cfg, "GET", f"backups?id=eq.{backup_id}&select=conteudo")
+    if not linhas:
+        raise ValueError("Esse backup não existe mais no servidor.")
+    return json.dumps(linhas[0]["conteudo"], ensure_ascii=False)
+
+
 def sincronizar(cfg):
     """Puxa, faz o merge (último carimbo leva) e empurra os pendentes.
 
