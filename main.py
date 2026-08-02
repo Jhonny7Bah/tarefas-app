@@ -15,6 +15,7 @@ import tempfile
 from datetime import datetime
 
 import flet as ft
+from flet_instalador import FletInstalador
 
 import db
 import sync
@@ -47,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.9.1"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.10.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -87,6 +88,17 @@ def main(page: ft.Page):
         page.window.min_height = JANELA_ALTURA_MIN
     # etiqueta as fotos de backup na nuvem com o aparelho de origem
     rotulo_dispositivo = "computador" if eh_desktop else "celular"
+
+    # Instalador nativo (extensão flet-instalador): só existe no Android,
+    # onde abrir o APK baixado dispara o instalador do sistema
+    eh_android = page.platform == ft.PagePlatform.ANDROID
+    instalador = FletInstalador() if eh_android else None
+    caminho_apk_atualizacao = os.path.join(os.path.dirname(db.DB), "atualizacao.apk")
+    try:
+        # faxina do APK da atualização anterior: instalado, não serve mais
+        os.remove(caminho_apk_atualizacao)
+    except OSError:
+        pass
 
     # A rolagem fica na vista externa; o recuo à direita impede a barra de
     # rolagem de cobrir a borda dos cards
@@ -810,7 +822,13 @@ def main(page: ft.Page):
             # Empacotado no Linux e com pacote na release: atualização
             # completa dentro do app. Senão, baixa pelo navegador como sempre
             dir_inst = dir_instalacao_atual() if eh_desktop else None
-            automatica = dir_inst is not None and url_download.endswith(".tar.gz")
+            automatica_desktop = dir_inst is not None and url_download.endswith(
+                ".tar.gz"
+            )
+            automatica_android = instalador is not None and url_download.endswith(
+                ".apk"
+            )
+            automatica = automatica_desktop or automatica_android
 
             async def baixar(ev, url=url_download):
                 page.pop_dialog()
@@ -845,6 +863,28 @@ def main(page: ft.Page):
 
                 page.run_task(acompanhar)
                 try:
+                    if automatica_android:
+                        # Android: baixa o APK no diretório de dados (privado,
+                        # sem sujar a pasta Downloads) e chama o instalador do
+                        # sistema; o arquivo é apagado no próximo boot
+                        pacote = caminho_apk_atualizacao
+                        await asyncio.to_thread(
+                            baixar_arquivo, url, pacote, ao_progredir
+                        )
+                        progresso["fim"] = True
+                        rotulo.value = "Abrindo o instalador…"
+                        barra.value = None
+                        page.update()
+                        resultado = await instalador.abrir(pacote)
+                        page.pop_dialog()
+                        if resultado == "permissionDenied":
+                            avisar(
+                                "Autoriza o Tarefas a instalar apps nas "
+                                "configurações do Android e tenta de novo."
+                            )
+                        elif resultado != "done":
+                            avisar("Não deu pra abrir o instalador do Android.")
+                        return
                     with tempfile.TemporaryDirectory() as tmp:
                         pacote = os.path.join(tmp, "tarefas.tar.gz")
                         await asyncio.to_thread(
@@ -1839,6 +1879,8 @@ def main(page: ft.Page):
     botao_busca.on_click = alternar_busca
     botao_voltar.on_click = voltar_para_lista
     page.services.append(seletor_arquivos)
+    if instalador is not None:
+        page.services.append(instalador)
     page.overlay.append(aviso_container)
     page.appbar = appbar
     fab.on_click = abrir_adicionar

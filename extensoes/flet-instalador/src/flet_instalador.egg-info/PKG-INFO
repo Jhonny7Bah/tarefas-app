@@ -1,0 +1,50 @@
+Metadata-Version: 2.4
+Name: flet-instalador
+Version: 0.1.0
+Summary: FletInstalador control for Flet
+Author-email: Flet contributors <you@example.com>
+Project-URL: Homepage, https://mydomain.dev
+Project-URL: Documentation, https://github.com/MyGithubAccount/flet-instalador
+Project-URL: Repository, https://github.com/MyGithubAccount/flet-instalador
+Project-URL: Issues, https://github.com/MyGithubAccount/flet-instalador/issues
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: flet>=0.85.3
+
+# flet-instalador
+FletInstalador control for Flet
+
+## Installation
+
+Add dependency to `pyproject.toml` of your Flet app:
+
+* **Git dependency**
+
+Link to git repository:
+
+```
+dependencies = [
+  "flet-instalador @ git+https://github.com/MyGithubAccount/flet-instalador",
+  "flet>=0.85.3",
+]
+```
+
+* **uv/pip dependency**
+
+If the package is published on pypi.org:
+
+```
+dependencies = [
+  "flet-instalador",
+  "flet>=0.85.3",
+]
+```
+
+Build your app:
+```
+flet build macos -v
+```
+
+## Documentation
+
+[Link to documentation](https://MyGithubAccount.github.io/flet-instalador/)

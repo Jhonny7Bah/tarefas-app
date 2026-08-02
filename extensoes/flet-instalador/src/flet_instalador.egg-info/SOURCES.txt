@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+src/flet_instalador/__init__.py
+src/flet_instalador/flet_instalador.py
+src/flet_instalador.egg-info/PKG-INFO
+src/flet_instalador.egg-info/SOURCES.txt
+src/flet_instalador.egg-info/dependency_links.txt
+src/flet_instalador.egg-info/requires.txt
+src/flet_instalador.egg-info/top_level.txt
+src/flutter/flet_instalador/pubspec.yaml
+src/flutter/flet_instalador/lib/flet_instalador.dart
+src/flutter/flet_instalador/lib/src/extension.dart
+src/flutter/flet_instalador/lib/src/flet_instalador.dart

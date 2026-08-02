@@ -301,8 +301,17 @@ a atualização por cima.
       dois toques, visualização de listas na criação, subtarefas no ato
       de criação. PRÓXIMO COMBINADO: atualização estilo Snaptube no
       Android (item d do usuário)
-- [ ] (Opcional, junto com notificações) atualização estilo Snaptube:
-      download e instalação dentro do app, sem navegador — exige extensão
-      nativa Flet (REQUEST_INSTALL_PACKAGES + FileProvider/intent).
-      Também resolve o item do usuário "download polui a memória do
-      celular a cada atualização"
+- [x] Atualização estilo Snaptube no Android (v1.10.0, 02/08/2026;
+      AGUARDA VALIDAÇÃO no celular real): primeira extensão nativa do
+      projeto, `extensoes/flet-instalador` (serviço Flet embrulhando o
+      plugin open_filex; padrão copiado do FilePicker: Service +
+      _invoke_method no Python, FletService + addInvokeMethodListener no
+      Dart). O botão Atualizar no Android baixa o APK pro diretório
+      privado (nada de pasta Downloads), chama o instalador do sistema e
+      o arquivo é apagado no boot seguinte. REQUEST_INSTALL_PACKAGES
+      declarada no pyproject; na primeira vez o Android pede pra
+      autorizar "instalar apps desconhecidos". ATENÇÃO: a dependência é
+      por caminho absoluto (file:///home/umcex/...) no pyproject, e a
+      extensão precisa de pip install -e no .venv pro flet run funcionar.
+      Como sempre, quem instala a v1.10.0 usa o fluxo velho (navegador);
+      o fluxo novo vale da v1.10.0 em diante

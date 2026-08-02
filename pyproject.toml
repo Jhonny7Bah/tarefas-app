@@ -1,10 +1,12 @@
 [project]
 name = "tarefas"
-version = "1.9.1"
+version = "1.10.0"
 description = "Gerenciador de tarefas offline"
 requires-python = ">=3.12"
 dependencies = [
     "flet==0.85.3",
+    # extensão nativa local: instalador de APK (atualização sem navegador)
+    "flet-instalador @ file:///home/umcex/Documents/Projetos/gerenciador_de_tarefas/extensoes/flet-instalador",
 ]
 
 [tool.flet]
@@ -28,6 +30,8 @@ select = ["E", "W", "F", "I", "N"]
 # Internet pro botão "Verificar atualização" consultar o GitHub
 [tool.flet.android.permission]
 "android.permission.INTERNET" = true
+# atualização por dentro do app: abrir o APK baixado no instalador
+"android.permission.REQUEST_INSTALL_PACKAGES" = true
 
 [tool.flet.app]
 # Só main.py e assets/ interessam no pacote; sem isso o flet leva a
@@ -42,6 +46,7 @@ exclude = [
     "tarefas.db",
     "storage",
     ".env",
+    "extensoes",
     "build.tar",
     "CLAUDE.md",
     "requirements.txt",

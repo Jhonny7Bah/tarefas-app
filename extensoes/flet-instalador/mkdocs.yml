@@ -1,0 +1,7 @@
+site_name: FletInstalador
+
+theme:
+  name: "material"
+
+plugins:
+  - mkdocstrings

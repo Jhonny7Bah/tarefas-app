@@ -1,0 +1,1 @@
+from flet_instalador.flet_instalador import FletInstalador
