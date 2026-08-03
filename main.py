@@ -48,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.10.3"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.10.4"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -524,7 +524,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Salvar", salvar_edicao_lista),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     def confirmar_exclusao_lista(lid, nome):
@@ -548,7 +548,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Excluir", excluir_lista_confirmada),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     # --- Tela de Concluídas --------------------------------------------------
@@ -650,7 +650,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Salvar", salvar_descricao),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     def mostrar_desfazer(titulo):
@@ -851,7 +851,7 @@ def main(page: ft.Page):
                         modal=True,
                         title=ft.Text("Atualizando"),
                         content=ft.Column([rotulo, barra], tight=True, spacing=16),
-                        bgcolor=COR_FUNDO,
+                        bgcolor=COR_CARD,
                     )
                 )
                 progresso = {"feito": 0, "total": 0, "fim": False}
@@ -930,7 +930,7 @@ def main(page: ft.Page):
                         botao_texto("Depois", lambda ev: page.pop_dialog()),
                         botao_download,
                     ],
-                    bgcolor=COR_FUNDO,
+                    bgcolor=COR_CARD,
                 )
             )
         else:
@@ -1069,7 +1069,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Salvar", salvar_config_sync),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     # --- Backup: exportar e restaurar ---------------------------------------
@@ -1111,7 +1111,7 @@ def main(page: ft.Page):
             botao_texto("Arquivo .db", exportar_como_db),
             botao_cheio("JSON", exportar_como_json),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     async def abrir_restaurar(e):
@@ -1171,7 +1171,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Escolher arquivo", escolher_backup),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     # --- Tela de Configurações (backup na nuvem + utilidades da gaveta) -----
@@ -1231,7 +1231,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Restaurar", restaurar_da_nuvem),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     def abrir_confirmacao_nuvem(e, backup_id):
@@ -1428,7 +1428,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Salvar", salvar_lista),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     # --- Edição e exclusão de tarefa ---------------------------------------
@@ -1738,7 +1738,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Excluir", excluir_confirmado),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     # --- Tela de adicionar tarefa (página inteira) --------------------------
@@ -1922,7 +1922,7 @@ def main(page: ft.Page):
             botao_texto("Cancelar", lambda e: page.pop_dialog()),
             botao_cheio("Sair", sair_do_app),
         ],
-        bgcolor=COR_FUNDO,
+        bgcolor=COR_CARD,
     )
 
     # --- Estrutura da página ----------------------------------------------
