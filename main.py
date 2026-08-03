@@ -48,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.10.6"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.10.7"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -73,6 +73,12 @@ def main(page: ft.Page):
         ),
     )
     page.padding = 0
+    # Locale pt-BR: meses e dias do seletor de data (e demais textos
+    # internos do Material) em português
+    page.locale_configuration = ft.LocaleConfiguration(
+        supported_locales=[ft.Locale("pt", "BR")],
+        current_locale=ft.Locale("pt", "BR"),
+    )
 
     # No computador o app mantém a cara de celular: janela em proporção de
     # celular e conteúdo numa coluna central de largura limitada
@@ -1438,6 +1444,61 @@ def main(page: ft.Page):
 
     # --- Edição e exclusão de tarefa ---------------------------------------
     tarefa_em_edicao: dict[str, int | None] = {"id": None}
+
+    def anexar_seletor_prazo(campo):
+        """Iconezinho de calendário no campo de prazo: abre o seletor de
+        data e, na sequência, o de hora (cancelar a hora deixa só a data).
+        Digitar na mão continua valendo; o seletor só preenche o texto."""
+
+        async def abrir_seletor(e):
+            atual = db.parse_prazo(campo.value or "")
+
+            async def data_escolhida(ev):
+                data = ev.control.value
+                if data is None:
+                    return
+                campo.value = data.strftime("%d/%m/%Y")
+                page.update()
+                # respiro entre um diálogo fechar e o outro abrir (regra
+                # da casa: trocar os dois no mesmo lote congela o front)
+                await asyncio.sleep(0.2)
+
+                def hora_escolhida(ev2):
+                    hora = ev2.control.value
+                    if hora is not None:
+                        campo.value = (
+                            f"{data.strftime('%d/%m/%Y')} {hora.strftime('%H:%M')}"
+                        )
+                        page.update()
+
+                page.show_dialog(
+                    ft.TimePicker(
+                        help_text="E a hora? (opcional)",
+                        cancel_text="Só a data",
+                        confirm_text="OK",
+                        on_change=hora_escolhida,
+                    )
+                )
+
+            page.show_dialog(
+                ft.DatePicker(
+                    value=datetime.fromisoformat(atual) if atual else None,
+                    first_date=datetime(2020, 1, 1),
+                    last_date=datetime(2100, 12, 31),
+                    help_text="Prazo da tarefa",
+                    cancel_text="Cancelar",
+                    confirm_text="OK",
+                    on_change=data_escolhida,
+                )
+            )
+
+        campo.suffix = ft.IconButton(
+            icon=ft.Icons.CALENDAR_MONTH_OUTLINED,
+            icon_color=COR_TEXTO_SUAVE,
+            tooltip="Escolher no calendário",
+            on_click=abrir_seletor,
+        )
+
     campo_edit_titulo = ft.TextField(
         label="O que precisa ser feito?",
         label_style=ETIQUETA_BRANCA,
@@ -1449,6 +1510,7 @@ def main(page: ft.Page):
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
         border_color=COR_ACENTO,
     )
+    anexar_seletor_prazo(campo_edit_prazo)
     selecao_listas_edit = ft.Column(spacing=0)
     dropdown_edit_prioridade = ft.Dropdown(
         expand=True,
@@ -1599,15 +1661,28 @@ def main(page: ft.Page):
         titulo = (campo_edit_titulo.value or "").strip()
         if not titulo:
             return
+        ok, prazo = prazo_do_campo(campo_edit_prazo)
+        if not ok:
+            return
         db.atualizar_tarefa(
             tarefa_em_edicao["id"],
             titulo,
             listas_marcadas(selecao_listas_edit),
             PRIORIDADES[dropdown_edit_prioridade.value or "Média"],
-            db.parse_prazo(campo_edit_prazo.value or ""),
+            prazo,
             REPETICOES[dropdown_edit_repetir.value or "Não repete"],
         )
         await voltar_para_lista()
+
+    def prazo_do_campo(campo):
+        """(ok, prazo) do campo. Texto inválido NUNCA vira prazo nenhum em
+        silêncio: avisa e segura o salvamento (fronteira honesta)."""
+        texto = (campo.value or "").strip()
+        prazo = db.parse_prazo(texto)
+        if texto and prazo is None:
+            avisar("Prazo inválido. Usa dd/mm/aaaa (e hh:mm se quiser).")
+            return False, None
+        return True, prazo
 
     def excluir_da_edicao(e):
         # O diálogo abre por cima da edição; Cancelar mantém o usuário nela
@@ -1619,13 +1694,16 @@ def main(page: ft.Page):
         titulo = (campo_edit_titulo.value or "").strip()
         if not titulo:
             return
+        ok, prazo = prazo_do_campo(campo_edit_prazo)
+        if not ok:
+            return
         tid = tarefa_em_edicao["id"]
         db.atualizar_tarefa(
             tid,
             titulo,
             listas_marcadas(selecao_listas_edit),
             PRIORIDADES[dropdown_edit_prioridade.value or "Média"],
-            db.parse_prazo(campo_edit_prazo.value or ""),
+            prazo,
             REPETICOES[dropdown_edit_repetir.value or "Não repete"],
         )
         clone = db.marcar_concluida(tid, True)
@@ -1769,6 +1847,7 @@ def main(page: ft.Page):
         hint_text="dd/mm/aaaa ou dd/mm/aaaa hh:mm",
         border_color=COR_ACENTO,
     )
+    anexar_seletor_prazo(campo_prazo)
     selecao_listas_add = ft.Column(spacing=0)
     dropdown_prioridade = ft.Dropdown(
         expand=True,
@@ -1791,7 +1870,9 @@ def main(page: ft.Page):
         texto = (campo_titulo.value or "").strip()
         if not texto:
             return
-        prazo = db.parse_prazo(campo_prazo.value or "")
+        ok, prazo = prazo_do_campo(campo_prazo)
+        if not ok:
+            return
         prioridade = PRIORIDADES[dropdown_prioridade.value or "Média"]
         # Em lote: uma tarefa por linha; senão, uma só
         if switch_lote.value:
