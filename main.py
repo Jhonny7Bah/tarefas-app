@@ -48,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.11.1"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.11.2"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -94,11 +94,15 @@ def main(page: ft.Page):
         page.window.min_height = JANELA_ALTURA_MIN
     # etiqueta as fotos de backup na nuvem com o aparelho de origem
     rotulo_dispositivo = "computador" if eh_desktop else "celular"
-    # Recuo pra barra de rolagem NÃO cobrir os cards: só no desktop, onde
-    # ela tem trilho próprio. No celular a barrinha é um fio flutuante que
-    # passa por cima do conteúdo (padrão Android); o recuo virava uma
-    # "borda" assimétrica feia na direita, apontada pelo usuário
-    recuo_rolagem = 14 if eh_desktop else 0
+    # Recuo da barra de rolagem, calibrado com o usuário no aparelho real:
+    # desktop tem trilho próprio e pede 14px só na direita; no celular a
+    # barrinha flutua por cima e o certo é um respiro PEQUENO e SIMÉTRICO
+    # (6px nos dois lados): ela corre no vão sem tocar a borda do card e a
+    # tela não ganha "borda" assimétrica
+    if eh_desktop:
+        recuo_lista_esq, recuo_lista_dir, recuo_form_dir = 0, 14, 14
+    else:
+        recuo_lista_esq, recuo_lista_dir, recuo_form_dir = 6, 6, 4
 
     # Instalador nativo (extensão flet-instalador): só existe no Android,
     # onde abrir o APK baixado dispara o instalador do sistema
@@ -121,7 +125,9 @@ def main(page: ft.Page):
         [
             ft.Container(
                 lista_tarefas,
-                padding=ft.Padding(left=0, top=0, right=recuo_rolagem, bottom=8),
+                padding=ft.Padding(
+                    left=recuo_lista_esq, top=0, right=recuo_lista_dir, bottom=8
+                ),
             )
         ],
         scroll=ft.ScrollMode.AUTO,
@@ -1860,7 +1866,7 @@ def main(page: ft.Page):
         [
             ft.Container(
                 form_editar_tarefa,
-                padding=ft.Padding(left=4, top=0, right=recuo_rolagem, bottom=8),
+                padding=ft.Padding(left=4, top=0, right=recuo_form_dir, bottom=8),
             )
         ],
         scroll=ft.ScrollMode.AUTO,
@@ -2022,7 +2028,7 @@ def main(page: ft.Page):
                     spacing=14,
                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 ),
-                padding=ft.Padding(left=4, top=0, right=recuo_rolagem, bottom=8),
+                padding=ft.Padding(left=4, top=0, right=recuo_form_dir, bottom=8),
             )
         ],
         scroll=ft.ScrollMode.AUTO,
