@@ -303,12 +303,16 @@ a atualização por cima.
       ROLLBACK NOS 3: virar_estado_novo recarimba tudo com agora e deixa
       lápides pro que não está na foto, então a volta no tempo se propaga
       pra todos os aparelhos via sync (decisão explícita do usuário)
-- [ ] Da lista do usuário (tarefa "Atualizações no App" no próprio app,
-      02/08/2026): concluir por dentro da tarefa aberta, botão de criar
-      atrapalhando exclusão da última lista, filtro de listas que exige
-      dois toques, visualização de listas na criação, subtarefas no ato
-      de criação. PRÓXIMO COMBINADO: atualização estilo Snaptube no
-      Android (item d do usuário)
+- [x] Itens 1, 2 e 3 do backlog do usuário (v1.10.1, 02/08/2026):
+      botão "Concluir tarefa" dentro da edição (salva antes de concluir,
+      com Desfazer; só em pendente), respiro no fim do Gerenciar listas
+      (FAB não cobre a última) e gaveta abrindo no primeiro toque (o
+      show_drawer só manda o comando; a gaveta agora nasce pré-montada
+      no boot e o abrir entrega o update antes). Suíte de testes
+      permanente criada em testes/ (roda_tudo.py; ver "Como testar")
+- [ ] Da lista do usuário, restam os de design (aguardando descrição
+      dele): visualização de listas na criação de tarefa (item 8) e
+      subtarefas no ato de criação (item 9)
 - [x] Atualização estilo Snaptube no Android (v1.10.0, 02/08/2026;
       AGUARDA VALIDAÇÃO no celular real): primeira extensão nativa do
       projeto, `extensoes/flet-instalador` (serviço Flet embrulhando o
