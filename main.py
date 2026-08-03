@@ -48,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.10.2"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.10.3"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -1633,7 +1633,11 @@ def main(page: ft.Page):
         "Concluir tarefa",
         icon=ft.Icons.CHECK_CIRCLE_OUTLINED,
         on_click=concluir_da_edicao,
-        style=ft.ButtonStyle(color="white"),
+        # borda verde pra falar a mesma língua dos campos do formulário
+        style=ft.ButtonStyle(
+            color="white",
+            side=ft.BorderSide(width=1, color=COR_ACENTO),
+        ),
     )
 
     # A edição também ocupa a página inteira, como a nova tarefa
@@ -1641,6 +1645,9 @@ def main(page: ft.Page):
         [
             ft.Container(height=16),
             texto_detalhes,
+            # no topo de propósito: "abri pra conferir, quero concluir e
+            # sair" sem rolar o formulário inteiro (pedido do usuário)
+            botao_concluir_edicao,
             campo_edit_titulo,
             campo_edit_prazo,
             ft.Text(
@@ -1652,7 +1659,6 @@ def main(page: ft.Page):
             titulo_subtarefas,
             subtarefas_coluna,
             linha_add_subtarefa,
-            botao_concluir_edicao,
             ft.Row(
                 [
                     ft.OutlinedButton(
