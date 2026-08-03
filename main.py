@@ -489,6 +489,9 @@ def main(page: ft.Page):
                     padding=ft.Padding(left=16, top=10, right=8, bottom=10),
                 )
             )
+        # respiro no fim: sem ele o "+" cobre os botões da última lista
+        # (item 2 do backlog do usuário, visto no celular)
+        lista_tarefas.controls.append(ft.Container(height=88))
         page.update()
 
     campo_edit_nome_lista = ft.TextField(
@@ -1573,6 +1576,8 @@ def main(page: ft.Page):
         if t["concluida_em"]:
             detalhes += f"  ·  Concluída em {db.formatar_prazo(t['concluida_em'])}"
         texto_detalhes.value = detalhes
+        # concluir por dentro só faz sentido pra tarefa ainda pendente
+        botao_concluir_edicao.visible = not t["concluida"]
         tarefa_em_edicao["id"] = tid
         montar_subtarefas()
         # de onde veio (lista ou busca), pra devolver no lugar certo
@@ -1598,6 +1603,34 @@ def main(page: ft.Page):
         # O diálogo abre por cima da edição; Cancelar mantém o usuário nela
         confirmar_exclusao(tarefa_em_edicao["id"])
 
+    async def concluir_da_edicao(e):
+        """Concluir por dentro da tarefa aberta (item 1 do backlog do
+        usuário). Salva o que estiver editado antes, pra nada se perder."""
+        titulo = (campo_edit_titulo.value or "").strip()
+        if not titulo:
+            return
+        tid = tarefa_em_edicao["id"]
+        db.atualizar_tarefa(
+            tid,
+            titulo,
+            listas_marcadas(selecao_listas_edit),
+            PRIORIDADES[dropdown_edit_prioridade.value or "Média"],
+            db.parse_prazo(campo_edit_prazo.value or ""),
+            REPETICOES[dropdown_edit_repetir.value or "Não repete"],
+        )
+        clone = db.marcar_concluida(tid, True)
+        ultima_concluida["id"] = tid
+        ultima_concluida["clone"] = clone
+        await voltar_para_lista()
+        mostrar_desfazer(titulo)
+
+    botao_concluir_edicao = ft.OutlinedButton(
+        "Concluir tarefa",
+        icon=ft.Icons.CHECK_CIRCLE_OUTLINED,
+        on_click=concluir_da_edicao,
+        style=ft.ButtonStyle(color="white"),
+    )
+
     # A edição também ocupa a página inteira, como a nova tarefa
     form_editar_tarefa = ft.Column(
         [
@@ -1614,6 +1647,7 @@ def main(page: ft.Page):
             titulo_subtarefas,
             subtarefas_coluna,
             linha_add_subtarefa,
+            botao_concluir_edicao,
             ft.Row(
                 [
                     ft.OutlinedButton(

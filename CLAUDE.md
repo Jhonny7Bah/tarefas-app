@@ -124,9 +124,17 @@ soltar release** — `flet run --ignore-dirs storage main.py`, UMA janela por
 vez (várias instâncias no mesmo banco geram comportamento fantasma). O ciclo
 local é instantâneo; o de release custa ~5 min de build por tentativa.
 
-Pra lógica: script Python no scratchpad que importa o módulo `db`, cria um
-banco temporário, simula o schema antigo pra validar a migração e asserta as
-regras. Nunca testar contra o banco do projeto.
+Pra lógica, a suíte permanente mora em `testes/` (bancos temporários e
+servidor Supabase FALSO em memória; nada toca no banco do projeto, nos
+dados reais ou na nuvem):
+
+```bash
+.venv/bin/python testes/roda_tudo.py
+```
+
+Rodar antes de commitar mudanças em `db.py`, `sync.py` ou `atualizacao.py`,
+e ampliar a suíte junto com features novas. Nunca testar contra o banco do
+projeto nem contra o Supabase real (produção tem os dados do usuário!).
 
 ## Ferramentas instaladas pro build do APK (jul/2026)
 
