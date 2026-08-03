@@ -48,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.10.1"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.10.2"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -1874,9 +1874,9 @@ def main(page: ft.Page):
         filtro["modo"] = "nova"
         render_tarefas()
 
-    # --- Botão voltar do Android --------------------------------------------
-    async def ao_tentar_voltar(e):
-        """Back do sistema: volta uma tela; na raiz, confirma antes de sair."""
+    # --- Voltar: botão do Android e tecla Esc no desktop --------------------
+    async def voltar_um_nivel():
+        """Cascata do voltar: gaveta, formulário, tela filha, filtro, raiz."""
         if gaveta_aberta["valor"]:
             gaveta_aberta["valor"] = False
             await page.close_drawer()
@@ -1893,7 +1893,18 @@ def main(page: ft.Page):
             render_tarefas()
         else:
             page.show_dialog(dialogo_sair)
+
+    async def ao_tentar_voltar(e):
+        """Back do sistema: volta uma tela; na raiz, confirma antes de sair."""
+        await voltar_um_nivel()
         await e.control.confirm_pop(False)
+
+    async def ao_teclar(e):
+        """Esc é a setinha de voltar do PC (pedido do usuário; o celular tem
+        o botão do sistema). Com diálogo aberto, quem cuida do Esc é o
+        próprio Flutter (fecha o diálogo), então não descemos a cascata."""
+        if e.key == "Escape" and not page._dialogs.controls:
+            await voltar_um_nivel()
 
     def sair_do_app(e):
         os._exit(0)  # encerra o processo; é o jeito de fechar o app no Android
@@ -1919,6 +1930,8 @@ def main(page: ft.Page):
     botao_voltar.on_click = voltar_para_lista
     # gaveta pré-montada no boot: o primeiro toque já encontra ela viva
     page.drawer = construir_drawer()
+    if eh_desktop:
+        page.on_keyboard_event = ao_teclar
     page.services.append(seletor_arquivos)
     if instalador is not None:
         page.services.append(instalador)
