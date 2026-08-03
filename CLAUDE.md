@@ -314,7 +314,8 @@ a atualização por cima.
       dele): visualização de listas na criação de tarefa (item 8) e
       subtarefas no ato de criação (item 9)
 - [x] Atualização estilo Snaptube no Android (v1.10.0, 02/08/2026;
-      AGUARDA VALIDAÇÃO no celular real): primeira extensão nativa do
+      VALIDADA no celular real em 02/08/2026, "funcionou certinho"):
+      primeira extensão nativa do
       projeto, `extensoes/flet-instalador` (serviço Flet embrulhando o
       plugin open_filex; padrão copiado do FilePicker: Service +
       _invoke_method no Python, FletService + addInvokeMethodListener no
