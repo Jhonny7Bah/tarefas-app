@@ -48,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.10.7"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.11.0"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -316,27 +316,68 @@ def main(page: ft.Page):
         chips += [chip(nome, "#4b5563") for nome in db.rotulo_listas(t).split(" · ")]
         return ft.Row(chips, spacing=6, wrap=True)
 
+    def prazo_humano(prazo_iso, atrasada):
+        """(texto, cor) do prazo em linguagem de gente: "hoje 14:00",
+        "amanhã", "em 5 dias · 07/08", "atrasada há 2 dias"."""
+        prazo = datetime.fromisoformat(prazo_iso)
+        dias = (prazo.date() - datetime.now().date()).days
+        hora = prazo.strftime(" %H:%M") if prazo.strftime("%H:%M") != "00:00" else ""
+        if atrasada:
+            if dias == 0:
+                return f"atrasada: era hoje{hora}", COR_ATRASADA
+            texto = "atrasada há 1 dia" if dias == -1 else f"atrasada há {-dias} dias"
+            return texto, COR_ATRASADA
+        # urgência (hoje/amanhã) em âmbar CLARO: semântica de alerta, e com
+        # brilho de texto (o d97706 das pílulas é tom de fundo, lamacento
+        # como texto; verde diria "tudo bem", o oposto do recado)
+        if dias == 0:
+            return f"hoje{hora}", "#fbbf24"
+        if dias == 1:
+            return f"amanhã{hora}", "#fbbf24"
+        return f"em {dias} dias · {prazo.strftime('%d/%m')}", COR_TEXTO_SUAVE
+
     def criar_card(t, atrasada=False):
+        def concluir(tid, titulo):
+            clone = db.marcar_concluida(tid, True)
+            ultima_concluida["id"] = tid
+            ultima_concluida["clone"] = clone
+            mostrar_desfazer(titulo)
+            render_tarefas()
+
         def on_check(e, tid=t["id"]):
             if e.control.value:
-                clone = db.marcar_concluida(tid, True)
-                ultima_concluida["id"] = tid
-                ultima_concluida["clone"] = clone
-                mostrar_desfazer(t["titulo"])
+                concluir(tid, t["titulo"])
             else:
                 db.marcar_concluida(tid, False)
+                render_tarefas()
+
+        def on_dismiss(e, tid=t["id"]):
+            # direita conclui, esquerda exclui; os dois com Desfazer de rede
+            if e.direction == ft.DismissDirection.START_TO_END:
+                concluir(tid, t["titulo"])
+                return
+            foto = db.snapshot_tarefa(tid)
+            db.excluir_tarefa(tid)
             render_tarefas()
+
+            def desfazer_exclusao(ev, foto=foto):
+                if foto is not None:
+                    db.restaurar_tarefa(foto)
+                    render_tarefas()
+
+            if foto is not None:
+                avisar(
+                    f'Excluída: "{foto["tarefa"]["titulo"]}"',
+                    acao="Desfazer",
+                    on_action=desfazer_exclusao,
+                )
 
         linha_prazo = None
         if t["prazo"]:
-            texto_prazo = db.formatar_prazo(t["prazo"])
+            texto_prazo, cor_prazo = prazo_humano(t["prazo"], atrasada)
             if t["repetir"]:
                 texto_prazo += "  ·  🔁"
-            linha_prazo = ft.Text(
-                texto_prazo,
-                size=12,
-                color=COR_ATRASADA if atrasada else COR_TEXTO_SUAVE,
-            )
+            linha_prazo = ft.Text(texto_prazo, size=12, color=cor_prazo)
 
         corpo: list[ft.Control] = [ft.Text(t["titulo"], color="white", size=15)]
         if linha_prazo:
@@ -344,10 +385,22 @@ def main(page: ft.Page):
         feitas, total_subs = db.progresso_subtarefas(t["id"])
         if total_subs:
             corpo.append(
-                ft.Text(
-                    f"Subtarefas: {feitas}/{total_subs}",
-                    size=12,
-                    color=COR_TEXTO_SUAVE,
+                ft.Row(
+                    [
+                        ft.Text(
+                            f"{feitas}/{total_subs}", size=12, color=COR_TEXTO_SUAVE
+                        ),
+                        ft.ProgressBar(
+                            value=feitas / total_subs,
+                            color=COR_ACENTO,
+                            bgcolor="#374151",
+                            bar_height=3,
+                            expand=True,
+                            border_radius=999,
+                        ),
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 )
             )
         corpo.append(chips_do_card(t))
@@ -359,7 +412,7 @@ def main(page: ft.Page):
             ft.Checkbox(value=False, on_change=on_check),
             ft.Column(corpo, spacing=4, expand=True),
         ]
-        return ft.Container(
+        cartao = ft.Container(
             content=ft.Row(
                 linha_principal,
                 spacing=8,
@@ -370,6 +423,41 @@ def main(page: ft.Page):
             padding=ft.Padding(left=12, top=10, right=12, bottom=10),
             on_click=on_tap,
             ink=True,
+        )
+        # Deslizar: direita conclui (fundo verde), esquerda exclui (fundo
+        # vermelho). O Container de fora recorta tudo no mesmo raio, senão
+        # os cantos do card e do fundo não casam durante o gesto (fresta
+        # apontada pelo usuário). Cada Dismissible precisa de key própria
+        deslizavel = ft.Dismissible(
+            key=t["uuid"] or str(t["id"]),
+            content=cartao,
+            dismiss_direction=ft.DismissDirection.HORIZONTAL,
+            dismiss_thresholds={
+                ft.DismissDirection.START_TO_END: 0.35,
+                ft.DismissDirection.END_TO_START: 0.35,
+            },
+            background=ft.Container(
+                ft.Row(
+                    [ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINED, color="white")],
+                    alignment=ft.MainAxisAlignment.START,
+                ),
+                bgcolor=COR_ACENTO,
+                padding=ft.Padding(left=16, top=0, right=0, bottom=0),
+            ),
+            secondary_background=ft.Container(
+                ft.Row(
+                    [ft.Icon(ft.Icons.DELETE_OUTLINE, color="white")],
+                    alignment=ft.MainAxisAlignment.END,
+                ),
+                bgcolor=COR_ATRASADA,
+                padding=ft.Padding(left=0, top=0, right=16, bottom=0),
+            ),
+            on_dismiss=on_dismiss,
+        )
+        return ft.Container(
+            deslizavel,
+            border_radius=16,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         )
 
     # --- Busca -------------------------------------------------------------
