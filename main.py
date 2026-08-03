@@ -798,6 +798,11 @@ def main(page: ft.Page):
 
     async def abrir_gaveta(e):
         page.drawer = construir_drawer()  # reconstrói pra atualizar contadores
+        # Entregar a gaveta pro lado gráfico ANTES do comando de abrir: o
+        # show_drawer só dispara o "abre" e, sem o update, no primeiro
+        # toque do app o comando chegava antes da gaveta existir (bug do
+        # toque duplo relatado pelo usuário)
+        page.update()
         await page.show_drawer()
         gaveta_aberta["valor"] = True
 
@@ -1912,6 +1917,8 @@ def main(page: ft.Page):
     botao_menu.on_click = abrir_gaveta
     botao_busca.on_click = alternar_busca
     botao_voltar.on_click = voltar_para_lista
+    # gaveta pré-montada no boot: o primeiro toque já encontra ela viva
+    page.drawer = construir_drawer()
     page.services.append(seletor_arquivos)
     if instalador is not None:
         page.services.append(instalador)
