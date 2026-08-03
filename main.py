@@ -48,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.10.4"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.10.5"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -101,8 +101,11 @@ def main(page: ft.Page):
         pass
 
     # A rolagem fica na vista externa; o recuo à direita impede a barra de
-    # rolagem de cobrir a borda dos cards
-    lista_tarefas = ft.Column(spacing=8)
+    # rolagem de cobrir a borda dos cards. O STRETCH garante largura cheia
+    # até pra filho que não se expande sozinho (ex.: o campo da busca)
+    lista_tarefas = ft.Column(
+        spacing=8, horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+    )
     vista_lista = ft.Column(
         [
             ft.Container(
@@ -365,9 +368,11 @@ def main(page: ft.Page):
 
     # --- Busca -------------------------------------------------------------
     resultados_busca = ft.Column(spacing=8)
+    # hint em vez de label: label do Material flutua pra cima ao focar e
+    # "cortava" a borda do campo (feio, apontado pelo usuário na busca)
     campo_busca = ft.TextField(
-        label="Buscar tarefas",
-        label_style=ETIQUETA_BRANCA,
+        hint_text="Buscar tarefas",
+        hint_style=ft.TextStyle(color=COR_TEXTO_SUAVE),
         prefix_icon=ft.Icons.SEARCH,
         border_color=COR_ACENTO,
         autofocus=True,
