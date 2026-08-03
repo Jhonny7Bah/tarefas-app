@@ -313,6 +313,22 @@ a atualização por cima.
 - [x] Itens 8 e 9 do backlog (visualização de listas na criação e
       subtarefas no ato de criar) ARQUIVADOS pelo usuário em 02/08/2026:
       "acho que não são relevantes". Não implementar sem ele pedir de novo
+- [x] Rodada de design v1.10.3-v1.11.2 (02/08/2026, TODA validada ao
+      vivo pelo usuário, com janela aberta no desktop e updates reais no
+      celular): Concluir tarefa no topo da edição (borda verde, abaixo
+      do Prazo); diálogos na cor dos cards (contraste contra o fundo);
+      busca com largura cheia e hint em vez de label flutuante; Esc =
+      voltar no desktop (cascata compartilhada com o back do Android);
+      seletor de calendário + hora no prazo (locale pt-BR na página;
+      prazo digitado inválido avisa em vez de salvar sem prazo); cards
+      repaginados: prazo em linguagem humana ("hoje 14:00"/"amanhã" em
+      âmbar claro #fbbf24, "em N dias · dd/mm", "atrasada há N" em
+      vermelho), barra de progresso de subtarefas, deslizar direita
+      conclui e esquerda exclui (Desfazer de rede, card recortado em
+      raio único pra não ter fresta); recuo da barra de rolagem
+      calibrado no aparelho real (desktop 14px só na direita; celular
+      6px simétrico, formulários 4px). Fluxo Snaptube usado em série
+      pelas atualizações do celular sem nenhuma falha
 - [x] Atualização estilo Snaptube no Android (v1.10.0, 02/08/2026;
       VALIDADA no celular real em 02/08/2026, "funcionou certinho"):
       primeira extensão nativa do
