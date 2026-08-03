@@ -310,9 +310,9 @@ a atualização por cima.
       show_drawer só manda o comando; a gaveta agora nasce pré-montada
       no boot e o abrir entrega o update antes). Suíte de testes
       permanente criada em testes/ (roda_tudo.py; ver "Como testar")
-- [ ] Da lista do usuário, restam os de design (aguardando descrição
-      dele): visualização de listas na criação de tarefa (item 8) e
-      subtarefas no ato de criação (item 9)
+- [x] Itens 8 e 9 do backlog (visualização de listas na criação e
+      subtarefas no ato de criar) ARQUIVADOS pelo usuário em 02/08/2026:
+      "acho que não são relevantes". Não implementar sem ele pedir de novo
 - [x] Atualização estilo Snaptube no Android (v1.10.0, 02/08/2026;
       VALIDADA no celular real em 02/08/2026, "funcionou certinho"):
       primeira extensão nativa do
