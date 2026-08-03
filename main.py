@@ -48,7 +48,7 @@ from constantes import (
 
 ETIQUETA_BRANCA = ft.TextStyle(color="white")
 
-VERSAO = "1.10.5"  # manter em sincronia com [project] version no pyproject.toml
+VERSAO = "1.10.6"  # manter em sincronia com [project] version no pyproject.toml
 
 ORDEM_GRUPOS = ["Atrasada", "Hoje", "Próximas", "Sem data"]
 
@@ -1650,11 +1650,11 @@ def main(page: ft.Page):
         [
             ft.Container(height=16),
             texto_detalhes,
-            # no topo de propósito: "abri pra conferir, quero concluir e
-            # sair" sem rolar o formulário inteiro (pedido do usuário)
-            botao_concluir_edicao,
             campo_edit_titulo,
             campo_edit_prazo,
+            # perto do topo de propósito: "abri pra conferir, quero
+            # concluir e sair" sem rolar o formulário (pedido do usuário)
+            botao_concluir_edicao,
             ft.Text(
                 "Listas", size=14, weight=ft.FontWeight.BOLD, color=COR_TEXTO_SUAVE
             ),
